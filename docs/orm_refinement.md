@@ -1,0 +1,106 @@
+# Phase 2 — ORM Refinement (Manual, Totally Optional)
+
+_Last updated: 2026-05-14 17:48 PDT_
+
+**Goal:** Refine the auto-generated ORM mapping specification to produce a curated, meaningful domain model suited to your application and your AI agent.
+
+**This phase has no script command.** It is a manual editing step — open the `.jdx` file in any text editor and make changes as described below. When you are done, recompile and move on to Phase 3.
+
+**Skipping this phase is perfectly fine.** The auto-generated model from Phase 1 is fully functional and will work with Gilhari and ORMCP out of the box. Phase 2 is an opportunity to improve the model, not a prerequisite.
+
+---
+
+## The working file
+
+```
+config/<reverse_eng_template_config>.config.jdx
+```
+
+This is a plain-text file using simple JDX grammar. Open it in any text editor. The `.revjdx` file is the immutable auto-generated starting point — do not edit it. The `.jdx` is your working copy.
+
+---
+
+## Common refinements
+
+**Rename attributes** — production databases often have cryptic column names. Renaming them in the `.jdx` makes the model readable to both developers and AI agents. Example: `pid` → `productId`, `emp_nm` → `employeeName`.
+
+Please add/modify a SQLMAP specification in the mapping file for any renamed attribute. For example,
+```
+SQLMAP for productId COLUMN_NAME pid
+``` 
+
+**Hide sensitive columns** — remove attributes like `salary`, `ssn`, or `password_hash` entirely. The AI agent will never see columns that are not mapped in the `.jdx`. This is your governance boundary.
+
+Also remove SQLMAP specifications, if any, for the corresponding attributes/columns.
+
+**Curate the object graph** — expose only the columns your application needs. If a table has 30 columns but only 8 are relevant, remove the rest. This keeps AI responses focused and token-efficient.
+
+Also remove SQLMAP specifications, if any, for the removed attributes/columns.
+
+**Add or adjust relationships** — define/refine one-to-one, one-to-many, or many-to-many relationships between classes to reflect your actual domain model.
+
+If you add/remove any RELATIONSHIP attribute, please add/remove the corresponding declaration in the associated container class (.java) file.
+
+**Update the model overview** — if you left `model_overview` blank during Phase 1, add it directly to the `.jdx` file:
+```
+OBJECT_MODEL_OVERVIEW An e-commerce model with Customers, Orders, and Products
+```
+This is read by ORMCP at startup to orient the AI agent before any queries are made.
+
+---
+
+## If you change the Java source files
+
+Some refinements require changes to both the `.jdx` and the corresponding `.java` source files in `src/<package path>/` — for example, renaming a class, adding a relationship, or adding a transient (runtime-only) attribute. After any `.java` changes, recompile:
+
+```bat
+compile.bat       :: Windows
+./compile.sh      :: macOS / Linux
+```
+
+The compile script cleans `bin/<package path>/` first, removing stale `.class` files for any classes you removed.
+
+> **If you plan to re-run Phase 1 later** (e.g. to add more tables), the script will warn you before cleaning `src/<package path>/`. Save copies of any hand-edited `.java` files before re-running.
+
+---
+
+## Verifying with JDXDemo
+
+JDXDemo is a tool included with the Gilhari SDK that lets you browse your object model and run queries against the live database — using the `localhost` URL in the `.jdx` — without spinning up Docker. It is a useful sanity check before building the Docker image, but it is optional.
+
+```bat
+JDXDemo.bat       :: Windows
+./JDXDemo.sh      :: macOS / Linux
+```
+
+---
+
+## The three ORM spec files
+
+| File | URL in connection string | Purpose |
+|---|---|---|
+| `*.revjdx` | `localhost` | Auto-generated, immutable record — never edit |
+| `*.jdx` | `localhost` | Your working copy — edit freely; used by JDXDemo and local Java apps |
+| `*.docker.jdx` | `host.docker.internal` | Auto-generated at the start of Phase 3; packaged inside the Docker image |
+
+The `.docker.jdx` does not exist yet at this stage. It is created fresh at the start of Phase 3 by substituting `host.docker.internal` for `localhost` in the JDBC URL so the container can reach the host's database.
+
+---
+
+## When you're ready for Phase 3
+
+```bat
+:: Windows
+python C:\tools\orm_skyway_automation\orm_skyway.py -f orm_skyway_config.json --phase 3
+
+# macOS / Linux
+python ~/tools/orm_skyway_automation/orm_skyway.py -f orm_skyway_config.json --phase 3
+```
+
+No database connection is needed for Phase 3. It reads only the compiled classes from `bin/` and the current `.jdx` from `config/`.
+
+→ [Phase 3 — Gilhari Packaging](gilhari_microservice_packaging.md)
+
+---
+
+← [Phase 1 — Reverse Engineering](begin_reverse_engineering.md) | Next: [Phase 3 — Gilhari Packaging](gilhari_microservice_packaging.md) →
