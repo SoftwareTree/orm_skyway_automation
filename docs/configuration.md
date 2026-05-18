@@ -1,6 +1,6 @@
 # Configuration File Reference
 
-_Last updated: 2026-05-14 18:45 PDT_
+_Last updated: 2026-05-18 13:40 PDT_
 
 ← [README](../README.md)
 
@@ -25,6 +25,7 @@ Save as `orm_skyway_config.json` in your project root directory before running t
     "reverse_eng_template_config": "reverse_eng_template",
 
     "model_overview": "An e-commerce object model with customers, orders, and products",
+    "tables":         "",
 
     "docker_image_name": "my-ecommerce-service",
     "docker_image_tag":  "1.0",
@@ -35,6 +36,18 @@ Save as `orm_skyway_config.json` in your project root directory before running t
     "verbose":           false
 }
 ```
+
+---
+
+## About the `tables` field
+
+The `tables` field controls which database tables are included in the object model:
+
+- **Leave blank** — the script shows an interactive menu listing all available tables; you pick the ones you want.
+- **Comma-separated list** — e.g. `"customer,order,product"` — skips the menu and uses exactly those tables.
+- **`"all"`** (the word alone) — selects every user table automatically, excluding JDX internal tables.
+
+> **`--yes` mode (non-interactive / CI):** `tables` must be set — either to `"all"` or a specific list. The script exits with an error if `tables` is blank in `--yes` mode. Run `--phase introspect` first to see all available table names.
 
 ---
 
@@ -226,6 +239,7 @@ Both are PostgreSQL-compatible. Use the standard PostgreSQL JDBC driver and foll
 | `object_model_package` | Java package for the generated model classes, e.g. `com.example.json.model`. Leave blank for no package — `.java` files are generated directly into `src/` and `.class` files into `bin/`, with no `package` declaration. |
 | `reverse_eng_template_config` | Base name for the generated config files. Produces `config/<n>.config`, `config/<n>.config.revjdx`, `config/<n>.config.jdx`, and `config/<n>.config.docker.jdx`. |
 | `model_overview` | A one-line description of your object model. Written into the ORM spec and read by ORMCP at startup to give AI agents domain context. Example: `"An e-commerce object model with customers, orders, and products"` |
+| `tables` | Pre-selects tables to expose, skipping the interactive selection menu. Comma-separated list of table names (e.g. `"customer,order,product"`), or the special value `"all"` (alone) to select every user table. **Required in `--yes` mode** — the script exits with an error if blank. Leave blank to select interactively. Run `--phase introspect` first to see all available table names. |
 
 The generated `config/<n>.config` file also includes a `JDX_METADATA_FILE` directive (e.g. `jdxMetadata_mysql.jdx` for MySQL, `jdxMetadata_postgres.jdx` for PostgreSQL) which tells JDX where to find its internal metadata table definitions. This is written automatically based on the detected DB type and propagates to all derived ORM files (`.revjdx`, `.jdx`, `.docker.jdx`). You do not need to set this manually.
 

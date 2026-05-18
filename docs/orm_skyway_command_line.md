@@ -1,6 +1,6 @@
 # Command-Line Reference
 
-_Last updated: 2026-05-14 17:48 PDT_
+_Last updated: 2026-05-18 13:32 PDT_
 
 ← [README](../README.md)
 
@@ -21,7 +21,7 @@ CLI flags always override values in the config file. Any value not supplied via 
 | `--project-dir PATH` | Project root directory (default: current working directory). Useful for CI or Makefile invocations where you cannot `cd` first. |
 | `--phase {1,3,1+3,introspect}` | Phase(s) to run. Default: `1+3` |
 | `--verbose` | Enable detailed output: command lines, file writes, class mappings. Also settable as `"verbose": true` in the config file. |
-| `--yes`, `-y` | Auto-accept all confirmation prompts (non-interactive / CI mode). |
+| `--yes`, `-y` | Auto-accept all confirmation prompts (non-interactive / CI mode). Requires `--tables` (or `tables` in config) to be set — use `all` to select every table. |
 
 ---
 
@@ -40,7 +40,7 @@ CLI flags always override values in the config file. Any value not supplied via 
 | `--object-model-package PKG` | Java package for generated model classes. Omit or leave blank for no package — files go directly into `src/` and `bin/`. |
 | `--reverse-eng-template-config NAME` | Base name for the template config file |
 | `--model-overview TEXT` | One-line object model description for AI clients |
-| `--tables TABLE1,TABLE2,...` | Pre-select tables (skips the interactive selection menu). Also settable in the config file. |
+| `--tables TABLE1,TABLE2,...` | Pre-select tables (skips the interactive selection menu). Use `all` as the sole value to select every user table. **Required when using `--yes`** — the script exits with an error if omitted. Also settable in the config file. |
 | `--skip-reverse-eng` | Skip running JDXReverseEngineer |
 | `--skip-compile` | Skip Java compilation |
 

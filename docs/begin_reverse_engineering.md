@@ -1,6 +1,6 @@
 # Phase 1 — Reverse Engineering
 
-_Last updated: 2026-05-14 17:48 PDT_
+_Last updated: 2026-05-18 13:32 PDT_
 
 **Goal:** Connect to your existing database, select the tables you care about, and automatically generate a JDX object model and ORM mapping specification.
 
@@ -49,6 +49,8 @@ Your selection: 1-3, products
 ```
 
 You are not required to include every table — choose only the ones relevant to your use case.
+
+When running non-interactively (`--yes` mode), set `tables` in the config file or via `--tables`. Use the special value `all` (alone) to select every user table, or a comma-separated list for a specific subset. Run `--phase introspect` first to see all available table names.
 
 ### Step 5 — Class name review
 For each selected table, the script proposes a Java class name (converting `snake_case` to `PascalCase`, e.g. `order_items` → `OrderItems`). You can accept or rename each one interactively before anything is written to disk.
