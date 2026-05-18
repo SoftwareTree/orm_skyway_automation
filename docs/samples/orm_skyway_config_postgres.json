@@ -4,7 +4,7 @@
         "db_schema: set to the target schema (e.g. 'public' or a custom schema name).",
         "If db_schema is left blank, the script defaults to the 'public' schema.",
         "Copy to your project root, rename to orm_skyway_config.json, and edit for your database.",
-        "Run: python orm_reverse_engineer.py -f orm_skyway_config.json --phase 1+3"
+        "Run: python orm_skyway.py -f orm_skyway_config.json --phase 1+3"
     ],
     "jdbc_url": "jdbc:postgresql://localhost:5432/mydb",
     "db_schema": "public",

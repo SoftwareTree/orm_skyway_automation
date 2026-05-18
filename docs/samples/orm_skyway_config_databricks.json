@@ -5,7 +5,7 @@
         "db_schema: set to the target schema/database in your Databricks workspace.",
         "Download the Databricks JDBC driver from https://www.databricks.com/spark/jdbc-drivers-download",
         "Copy to your project root, rename to orm_skyway_config.json, and edit for your database.",
-        "Run: python orm_reverse_engineer.py -f orm_skyway_config.json --phase 1+3"
+        "Run: python orm_skyway.py -f orm_skyway_config.json --phase 1+3"
     ],
     "jdbc_url": "jdbc:databricks://<host>:443/default;transportMode=http;ssl=1;httpPath=<http_path>;AuthMech=3",
     "db_schema": "<schema>",

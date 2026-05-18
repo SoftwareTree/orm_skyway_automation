@@ -5,7 +5,8 @@
         "db_schema: set to the target schema, or leave blank to extract from the URL schema= parameter.",
         "Download the Snowflake JDBC driver from https://docs.snowflake.com/en/developer-guide/jdbc/jdbc",
         "Copy to your project root, rename to orm_skyway_config.json, and edit for your database.",
-        "Run: python orm_reverse_engineer.py -f orm_skyway_config.json --phase 1+3"
+        "Run: python orm_skyway.py -f orm_skyway_config.json --phase 1+3",
+        "Snowflake JDBC 3.x users: override jdbc_driver_class to 'net.snowflake.client.jdbc.SnowflakeDriver' (the 4.x default is 'net.snowflake.client.api.driver.SnowflakeDriver')."
     ],
     "jdbc_url": "jdbc:snowflake://<account>.snowflakecomputing.com/?db=<database>&schema=<schema>&warehouse=<warehouse>",
     "db_schema": "<schema>",

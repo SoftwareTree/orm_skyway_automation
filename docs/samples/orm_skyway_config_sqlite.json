@@ -6,7 +6,7 @@
         "connecting process. Always run the script from your project root, or use an",
         "absolute path to avoid SQLite silently creating an empty database file.",
         "Copy to your project root, rename to orm_skyway_config.json, and edit for your database.",
-        "Run: python orm_reverse_engineer.py -f orm_skyway_config.json --phase 1+3"
+        "Run: python orm_skyway.py -f orm_skyway_config.json --phase 1+3"
     ],
     "jdbc_url": "jdbc:sqlite:./config/my_database.db",
     "db_schema": "",
