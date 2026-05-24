@@ -53,7 +53,7 @@ You are not required to include every table — choose only the ones relevant to
 When running non-interactively (`--yes` mode), set `tables` in the config file or via `--tables`. Use the special value `all` (alone) to select every user table, or a comma-separated list for a specific subset. Run `--phase introspect` first to see all available table names.
 
 ### Step 5 — Class name review
-For each selected table, the script proposes an object model class name (converting `snake_case` to `PascalCase`, e.g. `order_items` → `OrderItems`). An instance of this (Java) class (also referred as model container class) acts as a container for holding attribute values of a JSON model object. You can accept or rename each object model class name interactively before anything is written to disk.
+For each selected table, the script proposes an object model class name (converting `snake_case` to `PascalCase`, e.g. `order_items` → `OrderItems`). An instance of this (Java) class (also referred as container model class) acts as a container for holding attribute values of a JSON model object. You can accept or rename each object model class name interactively before anything is written to disk.
 
 The class name you choose becomes the REST URL segment in Phase 3 (e.g. `Customer` → `GET /gilhari/v1/Customer`).
 
