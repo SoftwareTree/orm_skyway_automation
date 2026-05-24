@@ -1,8 +1,8 @@
 # Phase 1 — Reverse Engineering
 
-_Last updated: 2026-05-18 13:32 PDT_
+_Last updated: 2026-05-24 13:32 PDT_
 
-**Goal:** Connect to your existing database, select the tables you care about, and automatically generate a JDX object model and ORM mapping specification.
+**Goal:** Connect to your existing database, select the tables you care about, and automatically generate a JSON object model and (JDX) ORM mapping specification.
 
 Before Phase 1 runs, the script performs a **preflight validation** — checking that `java`, `javac`, the Gilhari SDK jars, and the JDBC driver JAR are all present. If anything is missing you get a clear actionable error before any files are written.
 
@@ -31,7 +31,7 @@ The script reads your JDBC URL, credentials, and driver details from the config 
 The script locates your Gilhari SDK installation via `JX_HOME`. This is needed to invoke the `JDXSchema` reverse-engineering tool.
 
 ### Step 3 — Project settings
-Collects the Java package name (optional — leave blank for no package), template config base name, and a one-line model overview — a short description of your domain that ORMCP reads at startup to give AI agents immediate context about your data.
+Collects the Java package name for JSON object classes (optional — leave blank for no package), template config base name, and a one-line object model overview — a short description of your domain that ORMCP reads at startup to give AI agents immediate context about your data.
 
 ### Step 4 — Table discovery and selection
 The script connects to your database and retrieves all available table and view names. No schema changes are made at this point. An interactive menu then lets you choose which tables to include:
@@ -53,7 +53,7 @@ You are not required to include every table — choose only the ones relevant to
 When running non-interactively (`--yes` mode), set `tables` in the config file or via `--tables`. Use the special value `all` (alone) to select every user table, or a comma-separated list for a specific subset. Run `--phase introspect` first to see all available table names.
 
 ### Step 5 — Class name review
-For each selected table, the script proposes a Java class name (converting `snake_case` to `PascalCase`, e.g. `order_items` → `OrderItems`). You can accept or rename each one interactively before anything is written to disk.
+For each selected table, the script proposes an object model class name (converting `snake_case` to `PascalCase`, e.g. `order_items` → `OrderItems`). An instance of this (Java) class (also referred as model container class) acts as a container for holding attribute values of a JSON model object. You can accept or rename each object model class name interactively before anything is written to disk.
 
 The class name you choose becomes the REST URL segment in Phase 3 (e.g. `Customer` → `GET /gilhari/v1/Customer`).
 
@@ -79,7 +79,7 @@ If `src/` already contains `.java` files from a previous run, the script wipes t
 The auto-generated `.revjdx` is copied to `.jdx` — your working ORM spec, which you can edit freely in Phase 2. The `.revjdx` is kept as an immutable record and should never be edited directly.
 
 ### Step 9 — Compile
-All generated `.java` model classes are compiled into `bin/<package path>/` (or directly into `bin/` if no package is specified). The entire `bin/` directory is wiped before compile to ensure no stale `.class` files from any previous run remain.
+All generated `.java` container model classes are compiled into `bin/<package path>/` (or directly into `bin/` if no package is specified). The entire `bin/` directory is wiped before compile to ensure no stale `.class` files from any previous run remain.
 
 ### Helper scripts
 Phase 1 also writes a set of platform-specific helper scripts into the project root:
