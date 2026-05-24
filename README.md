@@ -15,9 +15,9 @@ No new database. No data migration. No custom API development. And because you c
 
 > **For developers:** Your relational database. AI-ready in one command.
 >
-> ORM_Skyway reverse-engineers any existing relational database into a curated JDX object model, packages it as a Gilhari RESTful microservice, and connects it to AI agents via MCP — automatically. Instead of raw SQL or generic REST, AI agents get a curated, object-oriented view of your domain. Shaped JSON objects keep token usage low. Sensitive columns removed from the ORM spec stay invisible to the agent. The `.jdx` mapping file is your governance boundary.
+> ORM_Skyway reverse-engineers any existing relational database into a curated JSON object model (using JDX), packages it as a RESTful microservice (using Gilhari), and connects it to AI agents via MCP (using ORMCP) — automatically. Instead of raw SQL or generic REST, AI agents get a curated, object-oriented view of your domain data. Shaped JSON objects keep token usage low. Sensitive columns removed from the ORM spec stay invisible to the agent. The `.jdx` mapping file is your governance boundary.
 >
-> MySQL, PostgreSQL, Oracle, SQLite, DB2, SQL Server — one tool, one command, zero hand-written API code.
+> MySQL, PostgreSQL, Oracle, SQLite, DB2, SQL Server, ... — one tool, one command, zero hand-written API code.
 
 ---
 
@@ -41,7 +41,7 @@ ORMCP Pipeline   ─────────────────────
                               ↑
 Gilhari Pipeline ─────────────────────────────────  ← REST microservice layer
                               ↑
-JDX Pipeline     ─────────────────────────────────  ← Java ORM layer
+JDX Pipeline     ─────────────────────────────────  ← Java/JSON ORM layer
                               ↑
 Your Database    ═════════════════════════════════  ← foundation
 ```
@@ -54,7 +54,7 @@ Each layer builds on the one below. ORM_Skyway automates the entire stack — fr
 
 | Phase | What happens | How |
 |---|---|---|
-| **1 — Reverse engineer** | Reads your DB schema, generates Java model classes and ORM spec | Script (automated) |
+| **1 — Reverse engineer** | Reads your DB schema, generates Java/JSON model classes and ORM spec | Script (automated) |
 | **2 — Refine** | Rename attributes, hide sensitive columns, curate the model; verify mapping with JDXDemo GUI tool | Manual — optional (edit one text file) |
 | **3 — Package** | Builds a Gilhari microservice Docker image with REST APIs for every mapped class | Script (automated) |
 | **4 — Run & test** | Start the container; verify with curl or Postman | Manual — optional but recommended |
