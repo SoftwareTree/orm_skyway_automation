@@ -66,7 +66,8 @@ Each layer builds on the one below. ORM_Skyway automates the entire stack — fr
 
 - Python 3.8+
 - JDK 8+ on your PATH
-- [Gilhari SDK](https://softwaretree.com/v1/products/gilhari/download-gilhari.php) (includes JDX ORM libraries)
+- Gilhari SDK (includes JDX ORM libraries): [Introduction](https://softwaretree.com/v1/products/gilhari/gilhari_introduction.php) | [Download](https://www.softwaretree.com/v1/products/gilhari/download-gilhari.php)
+- ORMCP (for Phase 5): [Introduction](https://www.softwaretree.com/v1/products/ormcp/ormcp-introduction.php) | [Download](https://www.softwaretree.com/v1/products/ormcp/download.php)
 - JDBC driver JAR for your database
 - Docker (for Phases 3–4)
 - `pip install rich` *(optional — nicer terminal output)*
