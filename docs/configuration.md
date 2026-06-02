@@ -1,6 +1,6 @@
 # Configuration File Reference
 
-_Last updated: 2026-05-18 13:40 PDT_
+_Last updated: 2026-06-01 17:28 PDT_
 
 ← [README](../README.md)
 
@@ -129,18 +129,24 @@ In Oracle, `db_schema` is the schema owner (typically the username). Leave it bl
 
 **SQLite**
 
-SQLite has no schema concept. Leave `db_schema` blank and put the file path in `jdbc_url`. Also, no credentials are needed for a SQLite database.
+SQLite has no schema concept. Leave `db_schema` blank and put the file path in `jdbc_url`. No credentials are needed.
 
 ```json
 "jdbc_url":   "jdbc:sqlite:./config/my_database.db",
 "db_schema":  ""
 ```
 
-> **Important:** The JDBC URL path is resolved relative to the working directory of the process connecting to the database — not necessarily your project root. If the database file is not found at the relative path, SQLite silently creates a new empty database file there, which will appear to connect successfully but contain no tables. If you encounter missing tables or unexpected behaviour, use an absolute path instead:
-> ```json
-> "jdbc_url":   "jdbc:sqlite:C:/projects/myproject/config/my_database.db"
-> ```
-> Always run the script from your project root directory to ensure relative paths resolve correctly.
+> **Important — local use:** The JDBC URL path is resolved relative to the working directory of the process connecting to the database. Always run the script from your project root directory. If the file is not found, SQLite silently creates a new empty database, which will appear to connect successfully but contain no tables.
+
+**SQLite and Docker (Phase 3):**
+
+SQLite is file-based, not network-based. Unlike other databases where `localhost` is replaced with `host.docker.internal`, the database file itself must be accessible inside the container. ORM_Skyway handles this automatically in two modes controlled by `embed_db_file_in_microservice`:
+
+- **Mount mode** (`embed_db_file_in_microservice: false`, default) — the database directory is mounted into the container at runtime via a Docker volume. The generated `run_docker_app` scripts include the `-v` mount automatically. This is recommended for development since DB changes are visible immediately without rebuilding the image. SQLite WAL files (`db-wal`, `db-shm`) and other companion files are accessible because the entire directory is mounted, not just the single file.
+
+- **Embed mode** (`embed_db_file_in_microservice: true`) — the database directory is baked into the Docker image at build time. The image is fully self-contained and shippable without any host filesystem dependency. Use this for demos, certification, or distribution. Note: data is static — rebuild the image to pick up any changes to the database file.
+
+In both modes, the script rewrites the JDBC URL in `.docker.jdx` to a fixed container path (`/opt/<image_name>/db/<filename>`) regardless of whether the original path was relative or absolute, ensuring consistent behaviour across all operating systems.
 
 **Microsoft SQL Server**
 
@@ -216,6 +222,10 @@ Uses Spanner's PostgreSQL-compatible interface (`dialect=POSTGRESQL`). The scrip
 "jdbc_driver_class": "com.google.cloud.spanner.jdbc.JdbcDriver"
 ```
 
+**Other file-based databases (H2, HSQLDB, Derby, Excel)**
+
+ORM_Skyway includes implicit support for other file-based databases. The same Docker volume mount / embed logic that applies to SQLite also applies to H2 (file mode), HSQLDB (file mode), Derby (embedded mode), and Excel (via JDBC). Sample configuration files for these databases are provided in `docs/samples/`. Note that JDX support for these has not been fully verified end-to-end and may require further enhancements.
+
 **CockroachDB and YugabyteDB** *(experimental — not yet verified)*
 
 Both are PostgreSQL-compatible. Use the standard PostgreSQL JDBC driver and follow the same `db_schema` guidance as PostgreSQL.
@@ -250,6 +260,7 @@ The generated `config/<n>.config` file also includes a `JDX_METADATA_FILE` direc
 | `docker_image_name` | Name for the Docker image. Also used as `gilhari_microservice_name` in `gilhari_service.config`. **Required** — must be set to a project-specific name (e.g. `my-sakila-service`) to avoid Docker image conflicts between projects on the same machine. The script will prompt if left blank. |
 | `docker_image_tag` | Docker image tag. Default: `1.0` |
 | `gilhari_host_port` | Host port mapped to Gilhari's internal port. Default: `80`. The service will be reachable at `http://localhost:<port>/gilhari/v1/`. |
+| `embed_db_file_in_microservice` | Only applies to file-based databases (SQLite, H2 file mode, HSQLDB file mode, Derby embedded, Excel). Set `true` to bake the database directory into the Docker image (self-contained/shippable). Default `false` = mount the host database directory at runtime via Docker volume — recommended for development. See the SQLite section above for full details. |
 
 ### Script behaviour
 
