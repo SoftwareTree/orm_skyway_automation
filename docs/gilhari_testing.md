@@ -1,6 +1,6 @@
 # Phase 4 — Run and Test (Manual, Optional but Recommended)
 
-_Last updated: 2026-05-14 17:48 PDT_
+_Last updated: 2026-06-02 23:22 PDT_
 
 **Goal:** Start the Gilhari microservice and verify that it is serving your data correctly before connecting an AI agent.
 
@@ -120,6 +120,45 @@ docker ps                            :: list running containers
 docker logs <container-id>           :: view Gilhari server logs
 docker stop <container-id>           :: stop the service
 ```
+
+---
+
+## Troubleshooting — container cannot connect to database
+
+If `docker logs <container>` shows a database connection error, the most likely cause is a networking issue between the Gilhari container and your database.
+
+The generated `.docker.jdx` uses `host.docker.internal` to reach the host machine's database. This works with **Docker Desktop** on Windows and macOS but not on **Colima** (common on Apple Silicon) or **Linux** without extra configuration.
+
+**Fix 1 — Colima: enable host resolution**
+```bash
+colima stop && colima start --network-address
+```
+
+**Fix 2 — Run database in Docker on a shared network (works everywhere)**
+
+This is the most portable solution — no host networking dependency, works on Docker Desktop, Colima, Podman, and Linux:
+
+```bash
+# 1. Create a shared network
+docker network create gilhari-net
+
+# 2. Start your database container on that network (MySQL example)
+docker run -d --name mysql-db --network gilhari-net \
+  -e MYSQL_ROOT_PASSWORD=secret \
+  -e MYSQL_DATABASE=mydb \
+  mysql:8
+
+# 3. Start Gilhari on the same network
+docker run -d --name my-gilhari-service --network gilhari-net \
+  -p 80:8081 my-gilhari-service:1.0
+```
+
+Edit `config/<n>.config.docker.jdx` to use the database container name instead of `host.docker.internal`:
+```
+JDX_DATABASE JDX:jdbc:mysql://mysql-db:3306/mydb;...
+```
+
+Docker's internal DNS resolves container names on the same network automatically — no IP addresses needed.
 
 ---
 

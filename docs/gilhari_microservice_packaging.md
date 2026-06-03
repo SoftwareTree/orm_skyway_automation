@@ -1,6 +1,6 @@
 # Phase 3 — Gilhari Microservice Packaging
 
-_Last updated: 2026-05-14 17:48 PDT_
+_Last updated: 2026-06-02 23:22 PDT_
 
 **Goal:** Package your object model into a self-contained Docker image that exposes a RESTful JSON API for every mapped class.
 
@@ -72,6 +72,46 @@ You can re-run Phase 3 at any time. It is self-contained and does not touch the 
 The script prints a summary of everything created, followed by the next steps for the Phase 4 with ready-to-run `curl` commands for each mapped class.
 
 → [Phase 4 — Run and Test](gilhari_testing.md)
+
+---
+
+## Docker networking notes
+
+The generated `.docker.jdx` replaces `localhost` with `host.docker.internal` in the JDBC URL so the container can reach the host machine's database. This works out of the box with **Docker Desktop** on Windows and macOS.
+
+**Colima (Apple Silicon) and Linux** do not support `host.docker.internal` by default. If the Gilhari container cannot connect to your database, try one of these approaches:
+
+**Option 1 — Enable `host.docker.internal` in Colima:**
+```bash
+colima stop
+colima start --network-address
+```
+
+**Option 2 — Run your database in Docker on a shared network (most portable):**
+
+This works on all platforms — Docker Desktop, Colima, Podman, and Linux — with no host networking dependency.
+
+```bash
+# Create a shared Docker network
+docker network create gilhari-net
+
+# Run your database on that network (MySQL example)
+docker run -d --name mysql-db --network gilhari-net \
+  -e MYSQL_ROOT_PASSWORD=secret \
+  -e MYSQL_DATABASE=mydb \
+  mysql:8
+
+# Run Gilhari on the same network
+docker run -d --name my-gilhari-service --network gilhari-net \
+  -p 80:8081 my-gilhari-service:1.0
+```
+
+Then edit `config/<n>.config.docker.jdx` to use the database container name instead of `host.docker.internal`:
+```
+JDX_DATABASE JDX:jdbc:mysql://mysql-db:3306/mydb;...
+```
+
+Docker's internal DNS resolves container names on the same network automatically.
 
 ---
 
