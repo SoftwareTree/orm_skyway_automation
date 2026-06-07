@@ -1,6 +1,6 @@
 # Phase 3 — Gilhari Microservice Packaging
 
-_Last updated: 2026-06-02 23:22 PDT_
+_Last updated: 2026-06-07 11:20 PDT_
 
 **Goal:** Package your object model into a self-contained Docker image that exposes a RESTful JSON API for every mapped class.
 
@@ -72,6 +72,14 @@ You can re-run Phase 3 at any time. It is self-contained and does not touch the 
 The script prints a summary of everything created, followed by the next steps for the Phase 4 with ready-to-run `curl` commands for each mapped class.
 
 → [Phase 4 — Run and Test](gilhari_testing.md)
+
+---
+
+## Apple Silicon platform note
+
+The generated Dockerfile and build scripts use `--platform linux/amd64`. On Apple Silicon Macs (M1/M2/M3) this causes a platform mismatch warning during `docker build` and `docker run`. The container still runs correctly via emulation (Rosetta 2), but with a small performance overhead.
+
+A multi-architecture image (`linux/amd64` + `linux/arm64`) would eliminate the warning but requires `docker buildx` and a more complex build pipeline. This is not currently automated by ORM_Skyway. If you need native ARM64 performance, you can manually modify the generated `build.sh` to use `docker buildx build --platform linux/amd64,linux/arm64` — but this requires the Gilhari base image to also support ARM64.
 
 ---
 

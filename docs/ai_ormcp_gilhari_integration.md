@@ -1,6 +1,6 @@
 # Phase 5 — ORMCP / AI Agent Integration
 
-_Last updated: 2026-05-14 17:48 PDT_
+_Last updated: 2026-06-07 11:20 PDT_
 
 **Goal:** Connect your running Gilhari microservice to an AI agent so it can query and interact with your business data through natural language.
 
@@ -29,6 +29,14 @@ The `model_overview` you provided during Phase 1 is embedded in the ORM spec and
 ```bat
 pip install ormcp-server
 ```
+
+> **macOS note — virtual environment location:** If you install ORMCP inside a virtual environment, do not create the venv inside `~/Desktop/` or `~/Documents/`. macOS restricts access to these folders for apps without Full Disk Access, and Claude Desktop will throw a `PermissionError` when trying to read `pyvenv.cfg`. Create the venv in an unrestricted location instead, for example:
+> ```bash
+> python3 -m venv ~/.ormcp-venv
+> source ~/.ormcp-venv/bin/activate
+> pip install ormcp-server
+> ```
+> Then point Claude Desktop's `"command"` to `~/.ormcp-venv/bin/ormcp-server`.
 
 **Beta users:** Request access at [softwaretree.com/products/ormcp](https://www.softwaretree.com/v1/products/ormcp/ormcp-introduction.php) to receive your token, then:
 ```bat
