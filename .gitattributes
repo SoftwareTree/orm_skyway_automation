@@ -1,0 +1,15 @@
+# Auto-generated for orm_skyway_automation
+# Enforces correct line endings regardless of platform.
+# Shell scripts must have LF endings to run on macOS/Linux.
+# Windows batch/cmd files should have CRLF.
+
+* text=auto eol=lf
+
+# Windows scripts — always CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files — no line ending conversion
+*.jar binary
+*.class binary
+*.db  binary
