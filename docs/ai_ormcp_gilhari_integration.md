@@ -1,6 +1,6 @@
 # Phase 5 — ORMCP / AI Agent Integration
 
-_Last updated: 2026-06-07 11:20 PDT_
+_Last updated: 2026-06-13 11:38 PDT_
 
 **Goal:** Connect your running Gilhari microservice to an AI agent so it can query and interact with your business data through natural language.
 
@@ -78,7 +78,8 @@ Add to `claude_desktop_config.json`:
         "MCP_SERVER_NAME": "my-service-ormcp",
         "GILHARI_NAME": "my-service",
         "GILHARI_IMAGE": "my-service:1.0",
-        "GILHARI_PORT": "80"
+        "GILHARI_PORT": "80",
+        "READONLY_MODE": "True"
       }
     }
   }
@@ -102,7 +103,7 @@ ORMCP works with any MCP-compatible client including Gemini CLI, OpenAI GPTs (in
 | `GILHARI_NAME` | Container name (used for auto-start) | — |
 | `GILHARI_IMAGE` | Docker image for auto-start | — |
 | `GILHARI_PORT` | Port for auto-start | — |
-| `READONLY_MODE` | Set `True` to expose only read operations | `False` |
+| `READONLY_MODE` | Set `False` to allow write operations (create, update, delete). Defaults to `True` — read-only is the safe default for AI agents. | `True` |
 | `GILHARI_TIMEOUT` | API timeout in seconds | `30` |
 | `LOG_LEVEL` | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR` | `INFO` |
 
@@ -138,6 +139,24 @@ Gilhari Microservice  (your Docker image from Phases 1–3)
     v
 Your Relational Database
 ```
+
+---
+
+## ORMCP HTTP mode
+
+By default, ORMCP runs as a local process started by your AI client. It also supports an **HTTP server mode** that makes it accessible from other machines, mobile devices, or any HTTP-capable client:
+
+```bash
+ormcp-server --http --port 8080
+```
+
+HTTP mode is more versatile than the default local process mode:
+- Accessible from any machine on the network, not just localhost
+- Works with mobile apps, web applications, and custom clients
+- No local ORMCP installation needed on client machines
+- Suitable for team or shared deployments
+
+See the [ORMCP documentation](https://github.com/SoftwareTree/ormcp-docs) for HTTP mode configuration details.
 
 ---
 
