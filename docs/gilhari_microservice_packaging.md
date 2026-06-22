@@ -15,6 +15,8 @@ python ~/tools/orm_skyway_automation/orm_skyway.py -f orm_skyway_config.json --p
 
 > **Before running Phase 3:** Make sure Docker is running. Start Docker Desktop (Windows/Mac) or the Docker daemon (Linux) if it is not already. You can verify with `docker info`.
 
+> Running the tool itself via [Docker mode](docker_mode.md)? `docker build` for Phase 3 still works — `run_orm_skyway.sh`/`.cmd` mount your host's Docker socket for exactly this purpose.
+
 No database connection is needed for Phase 3. It reads only the compiled `.class` files from `bin/` and the current `.jdx` spec from `config/`.
 
 ---

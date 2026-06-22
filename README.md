@@ -72,6 +72,8 @@ Each layer builds on the one below. ORM_Skyway automates the entire stack — fr
 - Docker (for Phases 3–4)
 - `pip install rich` *(optional — nicer terminal output)*
 
+> **Don't want to install a local JDK/JDX SDK?** [Docker mode](docs/docker_mode.md) runs the whole tool — Phases 1 and 3 — with only Docker installed.
+
 ---
 
 ## Quick start
@@ -205,6 +207,7 @@ Claude Desktop starts the ORMCP server automatically — no separate terminal ne
 
 ## Want to go deeper?
 
+- [Docker mode — run with only Docker installed](docs/docker_mode.md)
 - [Configuration file reference](docs/configuration.md)
 - [Phase 1 — Reverse engineering in detail](docs/begin_reverse_engineering.md)
 - [Phase 2 — ORM refinement guide](docs/orm_refinement.md)

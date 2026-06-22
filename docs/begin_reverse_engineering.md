@@ -6,6 +6,8 @@ _Last updated: 2026-05-24 13:32 PDT_
 
 Before Phase 1 runs, the script performs a **preflight validation** — checking that `java`, `javac`, the Gilhari SDK jars, and the JDBC driver JAR are all present. If anything is missing you get a clear actionable error before any files are written.
 
+> No local JDK or JDX SDK? See [Docker mode](docker_mode.md) — preflight validation is satisfied automatically inside the image.
+
 **Run from your project root directory:**
 ```bat
 :: Windows

@@ -77,6 +77,8 @@ Phase 3 generates two Git configuration files in the project root. Neither is re
 - `curl.log` — curl output log
 - `orm_skyway_config.json` — may contain credentials
 
+> Running via [Docker mode](docker_mode.md) adds two more excluded entries: `.orm_skyway_license_accepted` and `jdx_sandbox/` — both local/machine-specific, regenerated automatically when needed.
+
 **`.gitattributes`** — enforces correct line endings when files are committed from any platform:
 - `*.sh` → LF — shell scripts must have Unix line endings to run on macOS/Linux. Without this, scripts committed from Windows get CRLF endings and fail with `bad interpreter: No such file or directory`.
 - `*.bat`, `*.cmd` → CRLF — Windows batch files expect CRLF

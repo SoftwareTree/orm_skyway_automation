@@ -62,7 +62,7 @@ The `tables` field controls which database tables are included in the object mod
 | `db_type` | Overrides the DB type inferred from `jdbc_url`. Leave blank for auto-detection (recommended). Valid values: `MYSQL`, `POSTGRES`, `ORACLE`, `MSSQL`, `SQLITE`, `DB2` *(experimental)*, `SNOWFLAKE` *(experimental)*, `MARIADB` *(experimental)*, `DATABRICKS` *(experimental)*, `SPANNER` *(experimental)*, `COCKROACHDB` *(experimental)*, `YUGABYTE` *(experimental)*. Useful when the JDBC URL format is non-standard and auto-detection fails. JDX also supports additional tokens (e.g. `ORACLE9`, `GENERIC`) that can be passed through verbatim. |
 | `db_user` | Database username |
 | `db_password` | Database password |
-| `jdbc_driver_jar` | Full path to the JDBC driver JAR. Used both to connect in Phase 1 and copied into `config/` for Docker packaging in Phase 3. |
+| `jdbc_driver_jar` | Full path to the JDBC driver JAR. Used both to connect in Phase 1 and copied into `config/` for Docker packaging in Phase 3. In [Docker mode](docker_mode.md), this is only needed for databases other than MySQL/PostgreSQL/SQLite — those three are bundled in the image already. |
 | `jdbc_driver_class` | JDBC driver class name. A default is suggested based on the detected DB type, but can be overridden — set this explicitly if your JDBC driver JAR uses a different class name. Common values: `com.mysql.cj.jdbc.Driver`, `org.postgresql.Driver`, `org.sqlite.JDBC`, `com.microsoft.sqlserver.jdbc.SQLServerDriver`, `com.ibm.db2.jcc.DB2Driver`, `net.snowflake.client.api.driver.SnowflakeDriver` |
 
 The DB type (MySQL, PostgreSQL, SQLite, etc.) is inferred automatically from the JDBC URL. You only need to supply it manually via `--db-type` if it cannot be detected.
@@ -240,7 +240,7 @@ Both are PostgreSQL-compatible. Use the standard PostgreSQL JDBC driver and foll
 
 | Key | Description |
 |---|---|
-| `jx_home` | Root directory of the Gilhari SDK installation (the directory containing `libs/`, `external_libs/`, and `config/`). Can also be set as the `JX_HOME` environment variable. |
+| `jx_home` | Root directory of the Gilhari SDK installation (the directory containing `libs/`, `external_libs/`, and `config/`). Can also be set as the `JX_HOME` environment variable. Not needed in [Docker mode](docker_mode.md) — the bundled SDK is used automatically. |
 
 ### Project settings (Phase 1)
 
