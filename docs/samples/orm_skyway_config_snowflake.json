@@ -1,6 +1,6 @@
 {
     "_comments": [
-        "Sample configuration for Snowflake (EXPERIMENTAL \u2014 not yet fully verified).",
+        "Sample configuration for Snowflake (verified end-to-end with Snowflake trial account).",
         "Replace <account>, <database>, <schema>, and <warehouse> with your values.",
         "db_schema: set to the target schema, or leave blank to extract from the URL schema= parameter.",
         "Download the Snowflake JDBC driver from https://docs.snowflake.com/en/developer-guide/jdbc/jdbc",

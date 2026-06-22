@@ -193,7 +193,7 @@ Claude Desktop starts the ORMCP server automatically — no separate terminal ne
 | SQLite | ✅ Verified |
 | SQL Server (MSSQL) | ✅ Verified |
 | DB2 | ⚠️ Experimental |
-| Snowflake | ⚠️ Experimental |
+| Snowflake | ✅ Verified |
 | Databricks | ⚠️ Experimental |
 | SAP HANA | ⚠️ Experimental |
 | MariaDB | ⚠️ Experimental |
