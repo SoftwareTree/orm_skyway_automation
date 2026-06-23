@@ -35,6 +35,8 @@ build.cmd
 
 (`Dockerfile`, `docker-entrypoint.sh`, `LICENSE_AGREEMENT.txt`, and `orm_skyway.py` all need to be present alongside `build.cmd`/`.sh` for this to work.) If a published version becomes available in the future, this step will become a `docker pull` instead — the day-to-day usage below won't change either way.
 
+> **macOS/Linux:** if you get `permission denied`, the executable bit was likely lost in transit (e.g. zipped on Windows, emailed). Either run `bash build.sh` instead, or fix it once with `chmod +x build.sh run_orm_skyway.sh`.
+
 ---
 
 ## Day-to-day usage
