@@ -1,6 +1,6 @@
 # Docker Mode — Run with Zero Local Prerequisites
 
-_Last updated: 2026-06-22 PDT_
+_Last updated: 2026-06-26 PDT_
 
 ← [README](../README.md)
 
@@ -24,18 +24,20 @@ Docker mode replaces the first three with one: **Docker**. The `softwaretree/orm
 
 ## One-time setup
 
-This image is not (yet) published on Docker Hub — build it yourself, once, from the tool repository:
+This image is not (yet) published on Docker Hub — every collaborator builds it themselves, once, from a clone of this repository:
 
 ```bat
-build.cmd
+:: from anywhere — build.cmd finds the repo root itself
+docker\build.cmd
 ```
 ```bash
-./build.sh
+# from anywhere — build.sh finds the repo root itself
+./docker/build.sh
 ```
 
-(`Dockerfile`, `docker-entrypoint.sh`, `LICENSE_AGREEMENT.txt`, and `orm_skyway.py` all need to be present alongside `build.cmd`/`.sh` for this to work.) If a published version becomes available in the future, this step will become a `docker pull` instead — the day-to-day usage below won't change either way.
+(Everything needed — `Dockerfile`, `docker-entrypoint.sh`, `LICENSE_AGREEMENT.txt`, and `orm_skyway.py` — is already in this one repository; `orm_skyway.py` lives at the repo root so non-Docker users can grab just that one file, while the Docker-specific pieces live in `docker/`.) Once a private Docker Hub repository is set up, this step becomes a `docker pull` instead, and most collaborators won't need to build at all — the day-to-day usage below won't change either way.
 
-> **macOS/Linux:** if you get `permission denied`, the executable bit was likely lost in transit (e.g. zipped on Windows, emailed). Either run `bash build.sh` instead, or fix it once with `chmod +x build.sh run_orm_skyway.sh`.
+> **macOS/Linux:** if you get `permission denied`, the executable bit was likely lost in transit (e.g. zipped on Windows, emailed). Either run `bash docker/build.sh` instead, or fix it once with `chmod +x docker/build.sh docker/run_orm_skyway.sh`.
 
 ---
 

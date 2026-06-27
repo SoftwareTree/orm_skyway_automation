@@ -1,0 +1,99 @@
+Copyright (c) 2025 Software Tree, LLC. All Rights Reserved.
+
+PROPRIETARY SOFTWARE LICENSE
+
+This software and associated documentation files (the "Software") are the
+proprietary property of Software Tree, LLC ("SoftwareTree"). The Software
+includes, references, and interoperates with the following proprietary
+technologies owned exclusively by SoftwareTree:
+
+  - JDX ORM  (Java Data eXchange Object Relational Mapping framework)
+  - Gilhari  (RESTful microservice platform built on JDX ORM)
+  - ORMCP    (Object Relational Model Context Protocol server)
+
+These technologies are protected by copyright, trade secret, and other
+intellectual property laws of the United States and applicable international
+treaties. Unauthorized reproduction, redistribution, or use of these
+technologies — in whole or in part — is strictly prohibited.
+
+--------------------------------------------------------------------------------
+GRANT OF LICENSE
+--------------------------------------------------------------------------------
+
+Subject to the terms and conditions of this License, SoftwareTree grants you
+a limited, non-exclusive, non-transferable, revocable license to:
+
+  1. Use this script ("orm_skyway.py") and its associated
+     configuration files solely for the purpose of reverse-engineering your own
+     relational database schemas into JDX / Gilhari object models.
+
+  2. Copy, modify, and adapt this script for your own internal use, provided
+     that all copyright notices and proprietary markings are preserved in every
+     copy or derivative work.
+
+This License does not grant you any rights to JDX ORM, Gilhari, or ORMCP
+themselves. Use of those products is governed by separate license agreements
+available from SoftwareTree.
+
+--------------------------------------------------------------------------------
+RESTRICTIONS
+--------------------------------------------------------------------------------
+
+You may NOT, without prior written permission from SoftwareTree:
+
+  a. Distribute, sublicense, sell, rent, lease, or otherwise transfer this
+     Software or any derivative works to any third party.
+
+  b. Use this Software to develop a competing product or service.
+
+  c. Remove, alter, or obscure any proprietary notice, copyright notice,
+     trademark, or other legal notice contained in the Software.
+
+  d. Reverse engineer, decompile, or disassemble JDX ORM, Gilhari, or ORMCP
+     (the Software itself is the reverse-engineering automation tool; this
+     restriction applies to the underlying SoftwareTree platform libraries).
+
+  e. Use the names "JDX", "Gilhari", "ORMCP", or "Software Tree" in any
+     product name, promotional material, or documentation without prior
+     written consent from SoftwareTree.
+
+--------------------------------------------------------------------------------
+THIRD-PARTY COMPONENTS
+--------------------------------------------------------------------------------
+
+This script may be used alongside third-party JDBC drivers, the Java
+Development Kit (JDK), Docker, and other open-source tools. Each such
+component is subject to its own separate license terms. SoftwareTree makes
+no representations or warranties regarding third-party components and assumes
+no responsibility for their licensing obligations.
+
+--------------------------------------------------------------------------------
+DISCLAIMER OF WARRANTIES
+--------------------------------------------------------------------------------
+
+THE SOFTWARE IS PROVIDED "AS IS," WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. IN NO EVENT SHALL
+SOFTWARETREE BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+--------------------------------------------------------------------------------
+LIMITATION OF LIABILITY
+--------------------------------------------------------------------------------
+
+IN NO EVENT SHALL SOFTWARETREE BE LIABLE FOR ANY INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+LOSS OF PROFITS, DATA, OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING FROM THE USE OF OR INABILITY TO
+USE THE SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+--------------------------------------------------------------------------------
+CONTACT
+--------------------------------------------------------------------------------
+
+For licensing inquiries, please contact:
+
+  Software Tree, LLC
+  https://www.softwaretree.com

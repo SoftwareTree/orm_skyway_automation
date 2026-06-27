@@ -3,13 +3,6 @@
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# Distributed separately (not committed to repo)
-# orm_skyway.py and orm_skyway_config.json are sent to beta users by email.
-# -----------------------------------------------------------------------------
-orm_skyway.py
-orm_skyway_config.json
-
-# -----------------------------------------------------------------------------
 # Per-project generated artifacts (created when the tool runs)
 # These live in the user's service project directory, not the tool repo.
 # Listed here as a safety net in case someone runs the tool from the repo root.
@@ -28,6 +21,11 @@ config/*.jar
 
 # Temporary helper directory (cleaned up automatically after each run)
 .tmp_helper/
+
+# Docker mode (softwaretree/orm_skyway): one-time license acceptance marker
+# and extracted JDX SDK sandbox -- both machine/run-specific
+.orm_skyway_license_accepted
+jdx_sandbox/
 
 # curl output log
 curl.log
