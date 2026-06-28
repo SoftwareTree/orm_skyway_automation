@@ -72,7 +72,8 @@ Each layer builds on the one below. ORM_Skyway automates the entire stack — fr
 - Docker (for Phases 3–4)
 - `pip install rich` *(optional — nicer terminal output)*
 
-> **Don't want to install a local JDK/JDX SDK?** [Docker mode](docs/docker_mode.md) runs the whole tool — Phases 1 and 3 — with only Docker installed.
+> [!TIP]
+> Don't want to install a local JDK/JDX SDK? [Docker mode](docs/docker_mode.md) runs the whole tool — Phases 1 and 3 — with only Docker installed.
 
 ---
 
