@@ -1,6 +1,6 @@
 # Docker Mode — Run with Zero Local Prerequisites
 
-_Last updated: 2026-06-26 PDT_
+_Last updated: 2026-06-29 PDT_
 
 ← [README](../README.md)
 
@@ -116,7 +116,7 @@ run_orm_skyway.cmd -f orm_skyway_config.json
 
 ## Licensing
 
-`orm_skyway.py` itself is governed by `LICENSE_Skyway`. Separately, the `softwaretree/orm_skyway` image is built on `softwaretree/gilhari`, so it also carries Gilhari's own license terms — these are shown once, interactively, the first time you run the image against a given project directory (acceptance is recorded in that project so you won't see it again on later runs there).
+`orm_skyway.py` itself is governed by `LICENSE`. Separately, the `softwaretree/orm_skyway` image is built on `softwaretree/gilhari`, so it also carries Gilhari's own license terms — these are shown once, interactively, the first time you run the image against a given project directory (acceptance is recorded in that project so you won't see it again on later runs there).
 
 ---
 

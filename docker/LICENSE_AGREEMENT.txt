@@ -1,11 +1,21 @@
 SOFTWARETREE / ORM_SKYWAY — LICENSE AGREEMENT
 ==============================================
-
 orm_skyway.py and the softwaretree/orm_skyway Docker image are distributed by
 Software Tree, LLC and are governed by the same license terms as the Gilhari
 product (softwaretree/gilhari), which this image is built on top of.
 
-Please check the Gilhari license at https://www.softwaretree.com/v1/products/gilhari/licensing-agreement.php
+The full license text — including Gilhari's own terms and all third-party
+license agreements for components bundled in this image — is at:
+  /node/node_modules/gilhari_rest_server/LICENSE.txt
+inside this image. To read it before accepting, run:
+  docker run --rm softwaretree/orm_skyway cat /node/node_modules/gilhari_rest_server/LICENSE.txt
+
+For just the Gilhari product's own license terms (without third-party
+licenses), see:
+  https://www.softwaretree.com/v1/products/gilhari/licensing-agreement.php
+
+orm_skyway.py's own separate license terms are in LICENSE at the root of
+the orm_skyway_automation repository.
 
 By typing "y" at the prompt, or by setting ORM_SKYWAY_ACCEPT_LICENSE=yes, you
 confirm that you have read and agree to these license terms.

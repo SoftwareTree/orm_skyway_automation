@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Copyright © 2025 Software Tree, LLC. All Rights Reserved.
-# See LICENSE_Skyway for license terms.
+# See LICENSE for license terms.
 """
 ORM_Skyway Workflow
 ==========================================
