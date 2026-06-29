@@ -1,6 +1,6 @@
 # Phase 4 — Run and Test (Manual, Optional but Recommended)
 
-_Last updated: 2026-06-02 23:22 PDT_
+_Last updated: 2026-06-29 PDT_
 
 **Goal:** Start the Gilhari microservice and verify that it is serving your data correctly before connecting an AI agent.
 
@@ -98,11 +98,29 @@ curl -s -X POST http://localhost:80/gilhari/v1/Employee ^
 
 **Update an object:**
 ```bat
-curl -s -X PUT http://localhost:80/gilhari/v1/Employee ^
-  -H "Content-Type: application/json" ^
-  -d "{\"entity\": {\"empId\": 1, \"name\": \"Alice\", \"dept\": \"Marketing\"}}" ^
-  | python -m json.tool
+curl -s -X PUT http://localhost:80/gilhari/v1/Employee/updateEntity -H "Content-Type: application/json" -d "{\"entity\": {\"empId\": 1, \"name\": \"Alice\", \"dept\": \"Marketing\"}}"
 ```
+
+**Update multiple specific objects in one call:** `entity` also accepts an array — each object is matched and updated by its own primary key:
+```bat
+curl -s -X PUT http://localhost:80/gilhari/v1/Employee/updateEntity -H "Content-Type: application/json" -d "{\"entity\": [{\"empId\": 1, \"name\": \"Alice\", \"dept\": \"Marketing\"}, {\"empId\": 2, \"name\": \"Bob\", \"dept\": \"Sales\"}]}"
+```
+
+`PUT` returns a plain-text confirmation message (e.g. `Employee entity (entities) updated; result=null`) for both the single- and multi-object forms — not the updated object(s) or JSON — no need to pipe the response through `python -m json.tool` here.
+
+This differs from the bulk `PATCH` below in an important way: with `PUT`, you specify each object individually (by primary key, with its own full set of new values) — useful when updating a known, specific set of records. `PATCH` instead applies the *same* new values to every object matching a filter, without needing to know which records exist or their keys ahead of time.
+
+**Bulk-update objects matching a filter:**
+
+`PUT` above updates a single object identified by its primary key. To update every object of a class — or every object matching a filter — in one call, use `PATCH` instead. New attribute values are specified via `newValues`: a flat array of alternating name/value pairs (not an object) — `["attrib1", "value1", "attrib2", "value2", ...]`.
+
+```bat
+curl -s -X PATCH "http://localhost:80/gilhari/v1/Employee?filter=dept='Engineering'" -H "Content-Type: application/json" -d "{\"newValues\": [\"dept\", \"Marketing\"]}"
+```
+
+Omit `filter` to update every object of the class. Multiple attributes can be set in one call by extending the array: `"newValues": ["dept", "Marketing", "salary", "75000"]`.
+
+`PATCH` returns the number of objects updated (e.g. `1`), not the updated object(s) themselves — a filter matching no objects returns `0`.
 
 **Delete by filter:**
 ```bat
