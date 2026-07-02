@@ -62,7 +62,7 @@ The `tables` field controls which database tables are included in the object mod
 | `db_type` | Overrides the DB type inferred from `jdbc_url`. Leave blank for auto-detection (recommended). Valid values: `MYSQL`, `POSTGRES`, `ORACLE`, `MSSQL`, `SQLITE`, `DB2` *(experimental)*, `SNOWFLAKE` *(experimental)*, `MARIADB` *(experimental)*, `DATABRICKS` *(experimental)*, `SPANNER` *(experimental)*, `COCKROACHDB` *(experimental)*, `YUGABYTE` *(experimental)*. Useful when the JDBC URL format is non-standard and auto-detection fails. JDX also supports additional tokens (e.g. `ORACLE9`, `GENERIC`) that can be passed through verbatim. |
 | `db_user` | Database username |
 | `db_password` | Database password |
-| `jdbc_driver_jar` | Full path to the JDBC driver JAR. Used both to connect in Phase 1 and copied into `config/` for Docker packaging in Phase 3. In [Docker mode](docker_mode.md), this is only needed for databases other than MySQL/PostgreSQL/SQLite — those three are bundled in the image already. |
+| `jdbc_driver_jar` | Full path to the JDBC driver JAR. Used both to connect in Phase 1 and copied into `config/` for Docker packaging in Phase 3. |
 | `jdbc_driver_class` | JDBC driver class name. A default is suggested based on the detected DB type, but can be overridden — set this explicitly if your JDBC driver JAR uses a different class name. Common values: `com.mysql.cj.jdbc.Driver`, `org.postgresql.Driver`, `org.sqlite.JDBC`, `com.microsoft.sqlserver.jdbc.SQLServerDriver`, `com.ibm.db2.jcc.DB2Driver`, `net.snowflake.client.api.driver.SnowflakeDriver` |
 
 The DB type (MySQL, PostgreSQL, SQLite, etc.) is inferred automatically from the JDBC URL. You only need to supply it manually via `--db-type` if it cannot be detected.
@@ -212,15 +212,54 @@ Databricks uses token-based authentication. The `db_user` should be set to `toke
 "jdbc_driver_class": "com.databricks.client.jdbc.Driver"
 ```
 
-**Google Cloud Spanner** *(experimental — not yet verified)*
+**Google Spanner** *(experimental — not yet verified)*
 
-Uses Spanner's PostgreSQL-compatible interface (`dialect=POSTGRESQL`). The script detects this from the URL and routes it through PostgreSQL-compatible logic.
+Uses Spanner's PostgreSQL-compatible interface. Two connection options are available — Option B is recommended since it uses the same PostgreSQL JDBC driver as all other PostgreSQL-family databases in `orm_skyway`, and is fully compatible with `orm_skyway`'s UUID support.
+
+**Option B (Recommended): PGAdapter + standard PostgreSQL JDBC driver**
+
+The easiest way to run locally on Windows is the combined PGAdapter + Spanner emulator Docker image — no Google Cloud credentials or project needed, and no separate JRE required beyond what Docker provides:
+
+```bat
+docker run -d -p 5432:5432 -p 9010:9010 -p 9020:9020 ^
+  gcr.io/cloud-spanner-pg-adapter/pgadapter-emulator
+```
+
+This starts both PGAdapter and the Spanner emulator together. Any database name you connect to is auto-created. Data is stored in memory only — all state is lost when the container stops.
+
+Then connect using the standard PostgreSQL JDBC driver on `localhost:5432`:
 
 ```json
-"jdbc_url":   "jdbc:cloudspanner:/projects/<project>/instances/<instance>/databases/<database>?dialect=POSTGRESQL",
-"db_schema":  "",
+"jdbc_url":          "jdbc:postgresql://localhost:5432/test-db",
+"db_schema":         "",
+"db_user":           "",
+"db_password":       "",
+"jdbc_driver_jar":   "C:/SoftwareTree/JDX5.x/external_libs/postgresql-42.2.29.jar",
+"jdbc_driver_class": "org.postgresql.Driver"
+```
+
+For Cloud Spanner (not emulator), PGAdapter connects to your real instance and requires Google Cloud credentials. See [Start PGAdapter](https://cloud.google.com/spanner/docs/pgadapter-start) for details.
+
+**Option A (Fallback): Spanner JDBC driver directly**
+
+If PGAdapter isn't an option, use the Spanner JDBC driver to connect directly. Download it from [https://cloud.google.com/spanner/docs/jdbc-drivers](https://cloud.google.com/spanner/docs/jdbc-drivers).
+
+For the local emulator:
+```json
+"jdbc_url":          "jdbc:cloudspanner://localhost:9010/projects/emulator-project/instances/test-instance/databases/test-db;usePlainText=true",
+"db_schema":         "",
+"db_user":           "",
+"db_password":       "",
+"jdbc_driver_jar":   "C:/drivers/google-cloud-spanner-jdbc-x.x.x.jar",
 "jdbc_driver_class": "com.google.cloud.spanner.jdbc.JdbcDriver"
 ```
+
+For Cloud Spanner, replace the URL with:
+```json
+"jdbc_url": "jdbc:cloudspanner:/projects/<project>/instances/<instance>/databases/<database>?dialect=POSTGRESQL"
+```
+
+See `docs/sample/orm_skyway_config_spanner.json` for a complete sample configuration with both options.
 
 **Other file-based databases (H2, HSQLDB, Derby, Excel)**
 
@@ -240,7 +279,7 @@ Both are PostgreSQL-compatible. Use the standard PostgreSQL JDBC driver and foll
 
 | Key | Description |
 |---|---|
-| `jx_home` | Root directory of the Gilhari SDK installation (the directory containing `libs/`, `external_libs/`, and `config/`). Can also be set as the `JX_HOME` environment variable. Not needed in [Docker mode](docker_mode.md) — the bundled SDK is used automatically. |
+| `jx_home` | Root directory of the Gilhari SDK installation (the directory containing `libs/`, `external_libs/`, and `config/`). Can also be set as the `JX_HOME` environment variable. |
 
 ### Project settings (Phase 1)
 
