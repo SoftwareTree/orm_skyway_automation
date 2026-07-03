@@ -201,7 +201,7 @@ Claude Desktop starts the ORMCP server automatically — no separate terminal ne
 | SAP HANA | ⚠️ Experimental |
 | MariaDB | ⚠️ Experimental |
 | Spanner (PostgreSQL interface) | ⚠️ Experimental |
-| CockroachDB | ⚠️ Experimental |
+| CockroachDB (PostgreSQL interface) | ✅ Verified |
 | YugabyteDB | ⚠️ Experimental |
 
 ---
