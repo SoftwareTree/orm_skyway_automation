@@ -1,6 +1,6 @@
 # Configuration File Reference
 
-_Last updated: 2026-06-01 17:28 PDT_
+_Last updated: 2026-07-08 PDT_
 
 ← [README](../README.md)
 
@@ -218,16 +218,16 @@ Uses Spanner's PostgreSQL-compatible interface. Two connection options are avail
 
 **Option B (Recommended): PGAdapter + standard PostgreSQL JDBC driver**
 
-The easiest way to run locally on Windows is the combined PGAdapter + Spanner emulator Docker image — no Google Cloud credentials or project needed, and no separate JRE required beyond what Docker provides:
+The easiest way to run locally on Windows is the combined PGAdapter + Spanner emulator Docker image — no Google Cloud credentials, no project, no `gcloud` CLI, and no separate JRE required:
 
 ```bat
-docker run -d -p 5432:5432 -p 9010:9010 -p 9020:9020 ^
-  gcr.io/cloud-spanner-pg-adapter/pgadapter-emulator
+docker pull gcr.io/cloud-spanner-pg-adapter/pgadapter-emulator
+docker run -d -p 5432:5432 -p 9010:9010 -p 9020:9020 gcr.io/cloud-spanner-pg-adapter/pgadapter-emulator
 ```
 
-This starts both PGAdapter and the Spanner emulator together. Any database name you connect to is auto-created. Data is stored in memory only — all state is lost when the container stops.
+This starts both PGAdapter and the Spanner emulator in one container. Any database name you connect to is auto-created — no `CREATE DATABASE` step needed. Data is stored in memory only — all state is lost when the container stops.
 
-Then connect using the standard PostgreSQL JDBC driver on `localhost:5432`:
+Connect using the standard PostgreSQL JDBC driver on `localhost:5432` (pgjdbc 42.0.0 or higher — the `postgresql-42.2.29.jar` already bundled in the Gilhari SDK works):
 
 ```json
 "jdbc_url":          "jdbc:postgresql://localhost:5432/test-db",
@@ -237,6 +237,12 @@ Then connect using the standard PostgreSQL JDBC driver on `localhost:5432`:
 "jdbc_driver_jar":   "C:/SoftwareTree/JDX5.x/external_libs/postgresql-42.2.29.jar",
 "jdbc_driver_class": "org.postgresql.Driver"
 ```
+
+**Spanner-specific schema notes** — Spanner's PostgreSQL dialect has a few differences from standard PostgreSQL worth knowing before designing a test schema:
+- Every table must have an explicit `PRIMARY KEY` — no implicit rowid
+- `SERIAL` is not supported — use `BIGINT` or `VARCHAR` PKs, or UUID with `gen_random_uuid()` (supported in Spanner's PostgreSQL dialect)
+- Foreign key constraints are not enforced by the local emulator (they work on real Cloud Spanner)
+- Some DDL features differ — check [Spanner PostgreSQL dialect DDL](https://cloud.google.com/spanner/docs/reference/postgresql/data-definition-language) if you hit issues
 
 For Cloud Spanner (not emulator), PGAdapter connects to your real instance and requires Google Cloud credentials. See [Start PGAdapter](https://cloud.google.com/spanner/docs/pgadapter-start) for details.
 
