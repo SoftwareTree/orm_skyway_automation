@@ -64,7 +64,7 @@ import sys
 import textwrap
 from pathlib import Path
 
-__version__ = "1.0.14"
+__version__ = "1.0.15"
 
 # ── Optional pretty output ────────────────────────────────────────────────────
 try:
@@ -1071,9 +1071,10 @@ def ensure_jdxmetadata_via_jdxschema(cfg: dict, jdx_path: Path, all_tables: list
     _jdx_failed = (ret.returncode != 0 or
                    (ret.stdout and ": Exception:" in ret.stdout))
     if _jdx_failed:
-        error("JDXSchema -metaForceCreate failed:")
-        if ret.stdout and not _VERBOSE:
-            print(ret.stdout.rstrip())
+        _surface_jdx_error(
+            ret.stdout or "",
+            "JDXSchema -metaForceCreate failed."
+        )
         sys.exit(1)
     info("JDXMetadata table created successfully.")
 
@@ -1552,9 +1553,10 @@ def run_reverse_engineer(cfg: dict, config_path: Path):
     _jdx_failed = (ret.returncode != 0 or
                    (ret.stdout and ": Exception:" in ret.stdout))
     if _jdx_failed:
-        error("JDXReverseEngineer exited with an error.")
-        if ret.stdout and not _VERBOSE:
-            print(ret.stdout.rstrip())  # always show output on failure
+        _surface_jdx_error(
+            ret.stdout or "",
+            "JDXReverseEngineer (JDXSchema -reverseEng) exited with an error."
+        )
         sys.exit(1)
     info("Reverse engineering completed.")
 
@@ -3230,6 +3232,228 @@ def run_phase3(cfg: dict):
     info("Phase 5 — Connect an AI agent via ORMCP:")
     print("  See connectORMCP.md in the project directory for tailored")
     print("  installation instructions and Claude Desktop config snippet.")
+
+
+
+# ==============================================================================
+# JDX KNOWN ERROR PATTERNS
+#
+# Used by _surface_jdx_error() to match known JDX exception message prefixes
+# and surface a plain-English explanation before the raw JDX output.
+#
+# Scope: errors reachable through orm_skyway's own JDX subprocess calls:
+#   - Phase 1 Step 1:  database connection test
+#   - Phase 1 Step 10: JDXSchema -reverseEng
+#   - Phase 1 Step 12: JDXSchema -metaForceCreate
+#
+# Runtime Gilhari REST/CRUD errors are out of scope -- they surface in the
+# Gilhari container logs, not in orm_skyway subprocess output.
+#
+# Source: extracted from JDX 05.17 source via FindJDXExceptionCalls.py,
+# then triaged and annotated for orm_skyway relevance.
+# ==============================================================================
+
+def _surface_jdx_error(output: str, context: str) -> None:
+    """Surface a JDX subprocess error with component attribution and, where
+    possible, a plain-English explanation derived from known exception patterns.
+
+    Always marks the error as a JDX engine error (not an orm_skyway error) so
+    users know which component is responsible and where to look for help.
+    The raw JDX output is always printed after the explanation so the user
+    has full context. In verbose mode this means the output appears twice —
+    once from the caller's verbose_info() and again here — which is acceptable
+    since keeping the explanation and output adjacent aids debugging.
+
+    Each entry in _JDX_KNOWN_ERRORS is either a 2-tuple (pattern, explanation)
+    or a 3-tuple (pattern, explanation, secondary_pattern). For 3-tuples, both
+    the primary and secondary patterns must be present in the output for the
+    entry to match — this prevents short/generic primary patterns from firing
+    on unrelated output that happens to contain the same short string.
+    """
+    error(f"[JDX] {context}")
+    # Scan known patterns for a plain-English explanation
+    matched = False
+    if output:
+        for entry in _JDX_KNOWN_ERRORS:
+            pattern     = entry[0]
+            explanation = entry[1]
+            secondary   = entry[2] if len(entry) > 2 else None
+            if pattern in output and (secondary is None or secondary in output):
+                error(f"Likely cause: {explanation}")
+                matched = True
+                break
+    if not matched:
+        error(
+            "[JDX] This is a JDX ORM engine error — not an orm_skyway error.\n"
+            "  If the cause is unclear, check docs/ or contact Software Tree."
+        )
+    # Always print the raw JDX output adjacent to the explanation.
+    if output:
+        print("  — JDX detail output follows —")
+        print()
+        print(output.rstrip())
+
+
+_JDX_KNOWN_ERRORS = [
+
+    # =========================================================================
+    # LICENSE ERRORS
+    # Surface before any real work begins.
+    # Source: DCD.java
+    # =========================================================================
+
+    ("Invalid License Key (",
+     "[JDX License] The JDX license key is invalid.\n"
+     "  Check the jdx.lic file in your JDX SDK config/ directory.\n"
+     "  Contact Software Tree at https://www.softwaretree.com for a valid license."),
+
+    ("Invalid License Key (null)",
+     "[JDX License] No JDX license key was found.\n"
+     "  Check that jdx.lic exists in your JDX SDK config/ directory and is readable."),
+
+    ("JDX License Manager Exception: JDX tools not licensed",
+     "[JDX License] The JDX tools (reverse engineering, schema generation) are not licensed "
+     "for this user.\n"
+     "  Check the jdx.lic file in your JDX SDK config/ directory."),
+
+    ("JDX License Manager Exception: JDXRuntime not licensed",
+     "[JDX License] The JDX runtime is not licensed for this user.\n"
+     "  Check the jdx.lic file in your JDX SDK config/ directory."),
+
+    ("JDX License Manager Exception: the evaluation period has exp",
+     "[JDX License] The JDX evaluation period has expired.\n"
+     "  Contact Software Tree at https://www.softwaretree.com to renew your license."),
+
+    ("JDX License Manager Exception: the subscription period has e",
+     "[JDX License] The JDX subscription period has expired.\n"
+     "  Contact Software Tree at https://www.softwaretree.com to renew your license."),
+
+    ("JDX License Manager Exception: current JDX tools version not",
+     "[JDX License] The current JDX version is not covered by your license.\n"
+     "  Contact Software Tree at https://www.softwaretree.com to update your license."),
+
+    ("No license key specified for JDX in the license file",
+     "[JDX License] The JDX license file exists but contains no license key.\n"
+     "  Check the jdx.lic file in your JDX SDK config/ directory."),
+
+    ("License file name is null or invalid",
+     "[JDX License] The JDX license file path is invalid or missing.\n"
+     "  Check that jdx.lic exists in your JDX SDK config/ directory."),
+
+    # =========================================================================
+    # DATABASE CONNECTION ERRORS
+    # Surface during Phase 1 Step 1 (connection test).
+    # Source: JNDIDataSource.java, JDXSImpl.java, DCD.java
+    # =========================================================================
+
+    ("Exception while trying establishing database connection in J",
+     "[Database] Could not establish a database connection.\n"
+     "  Check that the database is running and that jdbc_url, db_user,\n"
+     "  and db_password in your config file are correct."),
+
+    ("Problem in getting a valid database connection for ORMFile",
+     "[Database] Could not get a valid database connection.\n"
+     "  Check that the database is running, the JDBC URL is correct, and\n"
+     "  the JDBC driver JAR is properly specified in your config file."),
+
+    ("Error: Unknown database type for JDX",
+     "[JDX] The database type is not recognized by JDX.\n"
+     "  Check the JDX_DBTYPE setting derived from your jdbc_url.\n"
+     "  Supported types include: POSTGRES, MYSQL, ORACLE, SQLSERVER, SQLITE,\n"
+     "  DB2, SNOWFLAKE, COCKROACHDB, and others.\n"
+     "  You can also try setting db_type to GENERIC in your config file."),
+
+    # =========================================================================
+    # PHASE 1 REVERSE ENGINEERING ERRORS
+    # Surface during Phase 1 Step 10 (JDXSchema -reverseEng).
+    # Source: ReferenceKeyInfo.java, ClassInfo.java, ComplexAttribInfo.java,
+    #         JDXGen.java, JXUtilities.java, JDXUtil.java
+    # =========================================================================
+
+    ("A source attribute of the reference key ",
+     "[JDX] A PRIMARY_KEY attribute is missing from the VIRTUAL_ATTRIB declarations "
+     "in the .jdx file.\n"
+     "  This typically happens when a column type is not supported/recognized during reverse "
+     "engineering.\n"
+     "  Check the .jdx file: every attribute named in PRIMARY_KEY must also appear\n"
+     "  as a VIRTUAL_ATTRIB declaration in the same class block."),
+
+    ("No source attribute specified for the reference key",
+     "[JDX] A reference key has no source attributes specified in the .jdx file.\n"
+     "  Check the RELATIONSHIP and REFERENCE_KEY specifications in the .jdx file."),
+
+    ("Attribute ",
+     "[JDX] An attribute listed in RDBMS_GENERATED was not found in the class.\n"
+     "  Check the .jdx file: attribute names in RDBMS_GENERATED must exactly match\n"
+     "  a VIRTUAL_ATTRIB declaration in the same class block.",
+     "mentioned in the RDBMS_GENERATED"),  # secondary: prevents false matches on "Attribute"
+
+    ("No proper mapping defined for complex attribute ",
+     "[JDX] A RELATIONSHIP specification in the .jdx file is missing or incomplete.\n"
+     "  Check that every RELATIONSHIP references a valid target class and key.\n"
+     "  This can happen if a referenced class was excluded from the table selection."),
+
+    ("Target key not found for constraint ",
+     "[JDX] A foreign key relationship could not be mapped to a JDX reference key.\n"
+     "  This may indicate a schema introspection issue.\n"
+     "  Check the RELATIONSHIP specifications in the .jdx file."),
+
+    ("In setComplex: Class name ",
+     "[JDX] A RELATIONSHIP references a class that is not defined in the .jdx file.\n"
+     "  Check that all classes referenced in RELATIONSHIP specifications are included.\n"
+     "  Re-run Phase 1 with the correct set of tables selected."),
+
+    ("In setComplex: A relationship attribute (",
+     "[JDX] A RELATIONSHIP source attribute was not found in the class.\n"
+     "  Check the WITH clause of the RELATIONSHIP specification in the .jdx file.\n"
+     "  All the attributes specified in the WITH clause should have \n"
+     "  VIRTUAL_ATTRIB declaration in the same class block."),
+
+    ("In setComplex: Target reference key ",
+     "[JDX] A RELATIONSHIP references a key that does not exist in the target class.\n"
+     "  Check the REFERENCES and WITH clauses of the RELATIONSHIP specification."),
+
+    ("In setComplex: source (ForeignKey) attributes must be specif",
+     "[JDX] A RELATIONSHIP is missing its source (foreign key) attribute specification.\n"
+     "  Check the WITH clause of the RELATIONSHIP specification in the .jdx file."),
+
+    ("No column ",
+     "[JDX] A column referenced in the .jdx file does not exist in the database table.\n"
+     "  Check that the attribute's COLUMN_NAME (default is the attribute name) or\n"
+     "  the name in a SQLMAP specification matches an actual column name,\n"
+     "  or re-run reverse engineering to regenerate the .jdx file.",
+     " in the table "),  # secondary: prevents false matches on "No column"
+
+    ("Error: Cannot get a default Java type for SQL type",
+     "[JDX] An unsupported SQL column type was encountered during reverse engineering.\n"
+     "  This column type may not be handled by JDX's default type mapping.\n"
+     "  You may need to manually add a VIRTUAL_ATTRIB with an explicit ATTRIB_TYPE\n"
+     "  appropriate for this column in the .jdx file during Phase 2."),
+
+    # =========================================================================
+    # PHASE 1 METAFORCECREATE ERRORS
+    # Surface during Phase 1 Step 12 (JDXSchema -metaForceCreate).
+    # Source: DatabaseInfo.java, JDXSetup.java
+    # =========================================================================
+
+    ("No metadata found for ",
+     "[JDX] The JDXMetadata table does not contain an entry for this ORM ID.\n"
+     "  This can happen if -metaForceCreate was skipped or failed on a previous run.\n"
+     "  Drop the JDXMetadata and JDXSequence tables and re-run Phase 1."),
+
+    ("Table or view ",
+     "[JDX] A table or view referenced in the .jdx file does not exist in the database.\n"
+     "  Check that the table name and db_schema in your config match the actual database\n"
+     "  schema, and that the JDBC URL points to the correct database.",
+     "not found"),  # secondary: prevents false matches on "Table or view"
+
+    ("The class ",
+     "[JDX] A class referenced in the .jdx mapping is not configured for JDX OR-Mapping.\n"
+     "  This usually means the table (for a class) was not included in the reverse engineering step.\n"
+     "  Re-run Phase 1 with the correct set of tables selected.",
+     "is not configured for JDX OR-Mapping"),  # secondary: prevents false matches on "The class"
+
+]
 
 
 # ==============================================================================
