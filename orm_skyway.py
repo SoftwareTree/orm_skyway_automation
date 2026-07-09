@@ -64,7 +64,7 @@ import sys
 import textwrap
 from pathlib import Path
 
-__version__ = "1.0.15"
+__version__ = "1.0.16"
 
 # ── Optional pretty output ────────────────────────────────────────────────────
 try:
@@ -921,8 +921,9 @@ public class CreateTestConnectionHelper {
         // blocking the subsequent CREATE TABLE inside JDX.
         // MSSQL does not support CREATE TABLE IF NOT EXISTS — use a safe
         // existence check instead. All other DB types use the standard syntax.
-        if (dbType.equals("MSSQL")) {
-            // SQL Server: check existence before creating
+        if (dbType.equals("MSSQL") || dbType.equals("HANA") || dbType.equals("SAPHANA")) {
+            // SQL Server and SAP HANA do not support CREATE TABLE IF NOT EXISTS —
+            // use a metadata existence check instead.
             java.sql.ResultSet rs = con.getMetaData().getTables(
                 null, null, "JDXTestConnection", new String[]{"TABLE"});
             boolean exists = rs.next();
@@ -1010,6 +1011,9 @@ _METADATA_JDX = {
     "CLOUDSPANNER":"jdxMetadata.jdx",        # reserved for future
     "COCKROACHDB":"jdxMetadata_postgres.jdx",# PostgreSQL-compatible
     "YUGABYTE": "jdxMetadata_postgres.jdx",  # PostgreSQL-compatible
+    "HANA":     "jdxMetadata.jdx",           # SAP HANA — no HANA-specific file yet
+    "SAPHANA":  "jdxMetadata.jdx",           # SAP HANA alias
+    "GENERIC":  "jdxMetadata.jdx",           # generic/unknown databases
 }
 
 
@@ -2313,6 +2317,7 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
 
     header("Phase 3 - Step 5 - Generate Sample Curl Scripts")
     write_curl_scripts(cfg, class_names)
+    write_curl_write_scripts(cfg, class_names)
     header("Phase 3 - Step 6 - Generate ORMCP Connection Guide")
     write_ormcp_guide(cfg, class_names)
 
@@ -2912,7 +2917,230 @@ Once connected, try asking your AI agent:
 # PHASE 3 — Package model into a Gilhari RESTful microservice Docker image
 # ==============================================================================
 
-def write_curl_scripts(cfg: dict, class_names: list):
+def _parse_jdx_for_curl(jdx_path: Path) -> dict:
+    """Parse CLASS blocks from a .jdx file for curl write command generation.
+    Returns dict of {ClassName: {attribs, rdbms_generated, pk}} for top-level
+    classes only (not COLLECTION_CLASS entries).
+    """
+    import re
+    classes = {}
+    current = None
+    try:
+        text = jdx_path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return {}
+    for line in text.splitlines():
+        line = line.strip()
+        m = re.match(r'^CLASS \.\s*(\w+)\s+TABLE', line)
+        if m:
+            current = m.group(1)
+            classes[current] = {"attribs": {}, "rdbms_generated": set(), "pk": []}
+            continue
+        if current is None:
+            continue
+        if line.startswith(';'):
+            current = None
+        elif m2 := re.match(r'VIRTUAL_ATTRIB\s+(\w+)\s+ATTRIB_TYPE\s+(\S+)', line):
+            classes[current]["attribs"][m2.group(1)] = m2.group(2)
+        elif m3 := re.match(r'PRIMARY_KEY\s+(.*)', line):
+            classes[current]["pk"] = m3.group(1).split()
+        elif m4 := re.match(r'RDBMS_GENERATED\s+(.*)', line):
+            classes[current]["rdbms_generated"].update(m4.group(1).split())
+    return classes
+
+
+def _curl_placeholder(type_str: str) -> str:
+    """Return a sensible JSON placeholder value for a given Java type string."""
+    t = type_str.lower()
+    if "string"    in t: return '"sample_value"'
+    if "bigdecimal"in t: return '0.00'
+    if "double"    in t: return '0.0'
+    if "float"     in t: return '0.0'
+    if "long"      in t: return '1'
+    if "int"       in t: return '1'
+    if "boolean"   in t: return 'true'
+    if "timestamp" in t: return '"2026-01-01T00:00:00"'
+    if "date"      in t: return '"2026-01-01"'
+    return '"value"'
+
+
+def write_curl_write_scripts(cfg: dict, class_names: list):
+    """
+    Generate sampleCurlWriteCommands.cmd/.sh — commented-out write operation examples.
+
+    All curl commands are REM'd / #-commented to prevent accidental execution.
+    Users must deliberately uncomment and replace placeholder values before running.
+    RDBMS_GENERATED attributes are excluded from POST examples since the database
+    generates those values automatically.
+    """
+    root  = cfg["project_root"]
+    port  = cfg.get("gilhari_host_port", 80)
+
+    # Try to parse the .jdx file for attribute info
+    jdx_path = cfg.get("jdx_path")
+    if jdx_path is None:
+        # Phase 3 only — find the .jdx from config
+        rev_cfg = cfg.get("reverse_eng_template_config", "reverse_eng_template")
+        jdx_path = root / CONFIG_DIR / f"{rev_cfg}.config.jdx"
+    jdx_classes = _parse_jdx_for_curl(Path(jdx_path)) if jdx_path else {}
+
+    def _curl_placeholder_cmd(type_str: str) -> str:
+        """Return a JSON placeholder value with cmd-style escaping for string values."""
+        t = type_str.lower()
+        if "string"    in t: return '\\\\\\"sample_value\\\\\\"'
+        if "bigdecimal"in t: return '0.00'
+        if "double"    in t: return '0.0'
+        if "float"     in t: return '0.0'
+        if "long"      in t: return '1'
+        if "int"       in t: return '1'
+        if "boolean"   in t: return 'true'
+        if "timestamp" in t: return '\\\\\\"2026-01-01T00:00:00\\\\\\"'
+        if "date"      in t: return '\\\\\\"2026-01-01\\\\\\"'
+        return '\\\\\\"value\\\\\\"'
+
+    def _post_body(cls):
+        """Build a POST entity body excluding RDBMS_GENERATED attributes (cmd format)."""
+        info = jdx_classes.get(cls, {})
+        attribs = info.get("attribs", {})
+        rdbms_gen = info.get("rdbms_generated", set())
+        post_attribs = {k: v for k, v in attribs.items() if k not in rdbms_gen}
+        if not post_attribs:
+            return '{\\\\\\"field1\\\\\\": \\\\\\"value1\\\\\\"}'
+        pairs = ", ".join(f'\\\\\\"{ k}\\\\\\": {_curl_placeholder_cmd(v)}' for k, v in post_attribs.items())
+        return '{' + pairs + '}'
+
+    def _post_body_sh(cls):
+        info = jdx_classes.get(cls, {})
+        attribs = info.get("attribs", {})
+        rdbms_gen = info.get("rdbms_generated", set())
+        post_attribs = {k: v for k, v in attribs.items() if k not in rdbms_gen}
+        if not post_attribs:
+            return '{"field1": "value1"}'
+        pairs = ", ".join(f'"{k}": {_curl_placeholder(v)}' for k, v in post_attribs.items())
+        return '{' + pairs + '}'
+
+    def _pk_filter(cls, cmd=True):
+        """Build a sample filter using the first PK attribute."""
+        info = jdx_classes.get(cls, {})
+        pk = info.get("pk", [])
+        attribs = info.get("attribs", {})
+        if pk:
+            pk_attr = pk[0]
+            pk_type = attribs.get(pk_attr, "java.lang.String")
+            pk_val  = _curl_placeholder(pk_type).strip('"') or "1"
+            return f"{pk_attr}='{pk_val}'" if "string" in pk_type.lower() else f"{pk_attr}={pk_val}"
+        return "field1='value1'"
+
+    def _put_body(cls, cmd=True):
+        info = jdx_classes.get(cls, {})
+        attribs = info.get("attribs", {})
+        if not attribs:
+            return '{\\\\\\"field1\\\\\\": \\\\\\"value1\\\\\\"}' if cmd else '{"field1": "value1"}'
+        if cmd:
+            pairs = ", ".join(f'\\\\\\"{ k}\\\\\\": {_curl_placeholder_cmd(v)}' for k, v in attribs.items())
+        else:
+            pairs = ", ".join(f'"{k}": {_curl_placeholder(v)}' for k, v in attribs.items())
+        return '{' + pairs + '}'
+
+    def _patch_new_values(cls, cmd=True):
+        info = jdx_classes.get(cls, {})
+        attribs = info.get("attribs", {})
+        rdbms_gen = info.get("rdbms_generated", set())
+        pk = set(info.get("pk", []))
+        update_attribs = {k: v for k, v in attribs.items()
+                         if k not in rdbms_gen and k not in pk}
+        if not update_attribs:
+            update_attribs = attribs
+        first_k, first_v = next(iter(update_attribs.items()))
+        if cmd:
+            return f'[\\\\\\"{ first_k}\\\\\\", {_curl_placeholder_cmd(first_v)}]'
+        else:
+            return f'["{first_k}", {_curl_placeholder(first_v)}]'
+
+    def _cmd():
+        lines = [
+            "REM sampleCurlWriteCommands.cmd — Example write operations (POST, PUT, PATCH, DELETE) for this Gilhari service",
+            "REM Generated by orm_skyway.py",
+            "REM",
+            "REM All curl commands below are commented out (REM) to prevent accidental",
+            "REM execution. To use a command, remove the REM prefix on the curl line",
+            "REM and replace placeholder values with real ones.",
+            "REM Each command WILL modify data in your database.",
+            "REM For read-only (GET) operations, use sampleCurlCommands.cmd instead.",
+            "REM",
+            f"SET BASE_URL=http://localhost:{port}/gilhari/v1",
+            "",
+        ]
+        for cls in class_names:
+            rdbms_gen = jdx_classes.get(cls, {}).get("rdbms_generated", set())
+            lines += [
+                f"REM --- {cls} ---",
+                "",
+                f"REM POST: Insert a new {cls} object",
+            ]
+            if rdbms_gen:
+                lines.append(f"REM Note: {', '.join(sorted(rdbms_gen))} {'is' if len(rdbms_gen)==1 else 'are'} auto-generated (RDBMS_GENERATED) — do not supply {'it' if len(rdbms_gen)==1 else 'them'}")
+            lines += [
+                f'REM curl -s -X POST %BASE_URL%/{cls} -H "Content-Type: application/json" -d "{{\\\"entity\\\": {_post_body(cls)}}}"',
+                "",
+                f"REM PUT: Update a specific {cls} object (supply primary key + all attributes)",
+                f'REM curl -s -X PUT %BASE_URL%/{cls}/updateEntity -H "Content-Type: application/json" -d "{{\\\"entity\\\": {_put_body(cls, cmd=True)}}}"',
+                "",
+                f"REM PATCH: Bulk-update {cls} objects matching a filter (returns count of updated objects)",
+                f'REM curl -s -X PATCH "%BASE_URL%/{cls}?filter={_pk_filter(cls)}" -H "Content-Type: application/json" -d "{{\\\"newValues\\\": {_patch_new_values(cls, cmd=True)}}}"',
+                "",
+                f"REM DELETE: Delete {cls} objects matching a filter",
+                f'REM curl -s -X DELETE "%BASE_URL%/{cls}?filter={_pk_filter(cls)}"',
+                "",
+            ]
+        return "\r\n".join(lines) + "\r\n"
+
+    def _sh():
+        lines = [
+            "#!/bin/bash",
+            "# sampleCurlWriteCommands.sh — Example write operations (POST, PUT, PATCH, DELETE) for this Gilhari service",
+            "# Generated by orm_skyway.py",
+            "#",
+            "# All curl commands below are commented out (#) to prevent accidental",
+            "# execution. To use a command, remove the # prefix on the curl line",
+            "# and replace placeholder values with real ones.",
+            "# Each command WILL modify data in your database.",
+            "# For read-only (GET) operations, use sampleCurlCommands.sh instead.",
+            "#",
+            f'BASE_URL="http://localhost:{port}/gilhari/v1"',
+            "",
+        ]
+        for cls in class_names:
+            rdbms_gen = jdx_classes.get(cls, {}).get("rdbms_generated", set())
+            lines += [
+                f"# --- {cls} ---",
+                "",
+                f"# POST: Insert a new {cls} object",
+            ]
+            if rdbms_gen:
+                lines.append(f"# Note: {', '.join(sorted(rdbms_gen))} {'is' if len(rdbms_gen)==1 else 'are'} auto-generated (RDBMS_GENERATED) — do not supply {'it' if len(rdbms_gen)==1 else 'them'}")
+            lines += [
+                f"# curl -s -X POST \"$BASE_URL/{cls}\" -H \"Content-Type: application/json\" -d '{{\"entity\": {_post_body_sh(cls)}}}'",
+                "",
+                f"# PUT: Update a specific {cls} object (supply primary key + all attributes)",
+                f"# curl -s -X PUT \"$BASE_URL/{cls}/updateEntity\" -H \"Content-Type: application/json\" -d '{{\"entity\": {_put_body(cls, cmd=False)}}}'",
+                "",
+                f"# PATCH: Bulk-update {cls} objects matching a filter (returns count of updated objects)",
+                f"# curl -s -X PATCH \"$BASE_URL/{cls}?filter={_pk_filter(cls)}\" -H \"Content-Type: application/json\" -d '{{\"newValues\": {_patch_new_values(cls, cmd=False)}}}'",
+                "",
+                f"# DELETE: Delete {cls} objects matching a filter",
+                f"# curl -s -X DELETE \"$BASE_URL/{cls}?filter={_pk_filter(cls)}\"",
+                "",
+            ]
+        return "\n".join(lines) + "\n"
+
+    cmd_path = root / "sampleCurlWriteCommands.cmd"
+    cmd_path.write_text(_cmd(), encoding="utf-8")
+
+    sh_path = root / "sampleCurlWriteCommands.sh"
+    write_sh(sh_path, _sh())
+
+    info("Sample curl write command scripts written: sampleCurlWriteCommands.cmd / sampleCurlWriteCommands.sh")
     """
     Generate sampleCurlCommands.cmd (Windows) and sampleCurlCommands.sh (macOS/Linux).
     Covers: health check, getObjectModelSummary, and deep + shallow GET for the
@@ -3227,6 +3455,8 @@ def run_phase3(cfg: dict):
     print(f"  4{chr(96+step)}. Run the sample curl script to test some REST APIs:")
     print("        sampleCurlCommands.cmd          (Windows)")
     print("        ./sampleCurlCommands.sh         (macOS / Linux)")
+    print("        sampleCurlWriteCommands.cmd     (Windows, write ops — all commented out)")
+    print("        ./sampleCurlWriteCommands.sh    (macOS / Linux, write ops — all commented out)")
     print("      Responses are logged to curl.log.")
     print()
     info("Phase 5 — Connect an AI agent via ORMCP:")
