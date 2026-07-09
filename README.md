@@ -55,7 +55,7 @@ Each layer builds on the one below. ORM_Skyway automates the entire stack — fr
 | Phase | What happens | How |
 |---|---|---|
 | **1 — Reverse engineer** | Reads your DB schema, generates Java/JSON model classes and ORM spec | Script (automated) |
-| **2 — Refine** | Rename attributes, hide sensitive columns, curate the model; verify mapping with JDXDemo GUI tool | Manual — optional (edit one text file) |
+| **2 — Refine & Curate** | Rename attributes, hide sensitive columns, curate the model; verify mapping with JDXDemo GUI tool | Manual — optional but recommended (edit one text file) |
 | **3 — Package** | Builds a Gilhari microservice Docker image with REST APIs for every mapped class | Script (automated) |
 | **4 — Run & test** | Start the container; verify with curl or Postman | Manual — optional but recommended |
 | **5 — Connect AI** | Point ORMCP at the running Gilhari microservice; add one config snippet to your AI client | Minutes |
@@ -211,7 +211,7 @@ Claude Desktop starts the ORMCP server automatically — no separate terminal ne
 - [Docker mode — run with only Docker installed](docs/docker_mode.md)
 - [Configuration file reference](docs/configuration.md)
 - [Phase 1 — Reverse engineering in detail](docs/begin_reverse_engineering.md)
-- [Phase 2 — ORM refinement guide](docs/orm_refinement.md)
+- [Phase 2 — ORM refinement and curation guide](docs/orm_refinement.md)
 - [Phase 3 — Gilhari packaging in detail](docs/gilhari_microservice_packaging.md)
 - [Phase 4 — Testing with curl and Postman](docs/gilhari_testing.md)
 - [Phase 5 — ORMCP / AI integration](docs/ai_ormcp_gilhari_integration.md)

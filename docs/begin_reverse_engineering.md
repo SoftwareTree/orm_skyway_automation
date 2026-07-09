@@ -123,11 +123,11 @@ JDXDemo.bat / .sh
 
 The script prints a summary of everything created and the exact command to continue with Phase 3. You can proceed immediately, or take time for Phase 2 first.
 
-Phase 2 is **totally optional**. If you run `--phase 1+3`, Phase 2 is skipped entirely and the auto-generated model is used as-is.
+Phase 2 is **optional** — if you run `--phase 1+3`, it is skipped entirely and the auto-generated model is used as-is. Taking time for Phase 2 is recommended when you want to curate the model for production use.
 
-→ [Phase 2 — ORM Refinement (optional)](orm_refinement.md)
+→ [Phase 2 — ORM Refinement and Curation (optional but recommended)](orm_refinement.md)
 → [Phase 3 — Gilhari Packaging](gilhari_microservice_packaging.md)
 
 ---
 
-← [Configuration reference](configuration.md) | Next: [Phase 2 — ORM Refinement](orm_refinement.md) →
+← [Configuration reference](configuration.md) | Next: [Phase 2 — ORM Refinement and Curation](orm_refinement.md) →

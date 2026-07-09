@@ -17,7 +17,7 @@ Project layout created beneath the current directory:
 WORKFLOW
 --------
   Phase 1  -- Reverse-engineer the database schema into a JDX object model  (script)
-  Phase 2  -- Refine the .jdx ORM spec and verify with JDXDemo  (manual, totally optional)
+  Phase 2  -- Refine & curate the .jdx ORM spec and verify with JDXDemo  (manual, optional but recommended)
   Phase 3  -- Package the model into a Gilhari RESTful microservice Docker image  (script)
 
 USAGE
@@ -3531,7 +3531,7 @@ def main():
             header("Phase 1 Complete")
             info("Artifacts written to the project directory.")
             print()
-            print("  Phase 2 (manual but totally optional) — before running Phase 3:")
+            print("  Phase 2 (manual, optional but recommended) — before running Phase 3:")
             print(f"  1. Refine  config/{cfg['reverse_eng_template_config']}.config.jdx  as needed.")
             print("     (rename attributes, hide columns, adjust types, add transient fields, etc.)")
             print("  2. If you rename or add classes in the .jdx, update the corresponding")
