@@ -1,6 +1,6 @@
 # Phase 3 — Gilhari Microservice Packaging
 
-_Last updated: 2026-06-07 11:20 PDT_
+_Last updated: 2026-07-09 PDT_
 
 **Goal:** Package your object model into a self-contained Docker image that exposes a RESTful JSON API for every mapped class.
 
@@ -125,4 +125,4 @@ Docker's internal DNS resolves container names on the same network automatically
 
 ---
 
-← [Phase 2 — ORM Refinement](orm_refinement.md) | Next: [Phase 4 — Run and Test](gilhari_testing.md) →
+← [Phase 2 — ORM Refinement and Curation](orm_refinement.md) | Next: [Phase 4 — Run and Test](gilhari_testing.md) →
