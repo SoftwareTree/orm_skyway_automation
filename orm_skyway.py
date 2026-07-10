@@ -3141,6 +3141,9 @@ def write_curl_write_scripts(cfg: dict, class_names: list):
     write_sh(sh_path, _sh())
 
     info("Sample curl write command scripts written: sampleCurlWriteCommands.cmd / sampleCurlWriteCommands.sh")
+
+
+def write_curl_scripts(cfg: dict, class_names: list):
     """
     Generate sampleCurlCommands.cmd (Windows) and sampleCurlCommands.sh (macOS/Linux).
     Covers: health check, getObjectModelSummary, and deep + shallow GET for the
