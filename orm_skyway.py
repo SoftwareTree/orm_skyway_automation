@@ -400,6 +400,7 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
     elif "snowflake" in url_lower: cfg["url_db_type"] = "SNOWFLAKE"
     elif "mariadb"   in url_lower: cfg["url_db_type"] = "MARIADB"
     elif "databricks"in url_lower: cfg["url_db_type"] = "DATABRICKS"
+    elif "jdbc:sap:"  in url_lower: cfg["url_db_type"] = "SAPHANA"
     elif "cloudspanner" in url_lower and "dialect=postgresql" in url_lower:
                                    cfg["url_db_type"] = "SPANNER"
     elif "cloudspanner" in url_lower: cfg["url_db_type"] = "CLOUDSPANNER"
