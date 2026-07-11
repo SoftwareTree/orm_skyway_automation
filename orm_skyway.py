@@ -1012,8 +1012,8 @@ _METADATA_JDX = {
     "CLOUDSPANNER":"jdxMetadata.jdx",        # reserved for future
     "COCKROACHDB":"jdxMetadata_postgres.jdx",# PostgreSQL-compatible
     "YUGABYTE": "jdxMetadata_postgres.jdx",  # PostgreSQL-compatible
-    "HANA":     "jdxMetadata.jdx",           # SAP HANA — no HANA-specific file yet
-    "SAPHANA":  "jdxMetadata.jdx",           # SAP HANA alias
+    "HANA":     "jdxMetadata_saphana.jdx",   # SAP HANA — uses CLOB for jdxMetaInfo (HANA JDBC rejects "text")
+    "SAPHANA":  "jdxMetadata_saphana.jdx",   # SAP HANA alias
     "GENERIC":  "jdxMetadata.jdx",           # generic/unknown databases
 }
 
