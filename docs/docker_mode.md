@@ -1,6 +1,6 @@
 # Docker Mode — Run with Zero Local Prerequisites
 
-_Last updated: 2026-06-29 PDT_
+_Last updated: 2026-07-11 PDT_
 
 ← [README](../README.md)
 
@@ -43,16 +43,16 @@ docker\build.cmd
 
 ## Day-to-day usage
 
-From your project root directory — same place you'd normally run `orm_skyway.py`:
+From your project root directory — same place you'd normally run `orm_skyway.py` — reference `run_orm_skyway.cmd`/`.sh` by the path to wherever you cloned this repository (the Docker-specific scripts live in `docker/`, same as in the one-time setup step above):
 
 ```bat
 :: Windows
-run_orm_skyway.cmd -f orm_skyway_config.json --phase 1+3
+C:\tools\orm_skyway_automation\docker\run_orm_skyway.cmd -f orm_skyway_config.json --phase 1+3
 ```
 
 ```bash
 # macOS / Linux
-./run_orm_skyway.sh -f orm_skyway_config.json --phase 1+3
+~/tools/orm_skyway_automation/docker/run_orm_skyway.sh -f orm_skyway_config.json --phase 1+3
 ```
 
 Same config file, same flags, same interactive prompts as the standard workflow — see [Phase 1](begin_reverse_engineering.md), [Phase 2](orm_refinement.md), and [Phase 3](gilhari_microservice_packaging.md) for what each step does; none of that changes. `run_orm_skyway.sh`/`.cmd` just wraps `docker run` with the mounts the tool needs:
@@ -98,7 +98,7 @@ Set an environment variable before running, pointing at the real location, and r
 
 ```bat
 set ORM_SKYWAY_EXTRA_MOUNT=C:\data:/extra_data
-run_orm_skyway.cmd -f orm_skyway_config.json
+C:\tools\orm_skyway_automation\docker\run_orm_skyway.cmd -f orm_skyway_config.json
 ```
 ```json
 "jdbc_url": "jdbc:sqlite:/extra_data/mydb.sqlite"
