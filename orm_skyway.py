@@ -64,7 +64,7 @@ import sys
 import textwrap
 from pathlib import Path
 
-__version__ = "1.0.21"
+__version__ = "1.0.22"
 
 # ── Optional pretty output ────────────────────────────────────────────────────
 try:
@@ -844,13 +844,12 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
         verbose_info(f"Docker container hostname (pinned): {cfg['docker_hostname']}")
 
     if cfg.get("url_db_type") == "EXCEL" and not (cfg["docker_mac_address"] and cfg["docker_hostname"]):
-        warn("Excel/CData: confirmed in practice (2026-07-13) that the CData driver's license check needs "
-             "BOTH the container's hostname AND MAC address to match whatever they were issued/activated "
-             "for — not arbitrary values. If Gilhari fails at startup with a 'valid license not found' "
-             "error, set both explicitly:")
+        warn("Excel/CData: confirmed (2026-07-14) that the CData driver's license check requires the "
+             "container's hostname AND MAC address to match your ACTUAL HOST MACHINE'S real values — not "
+             "just any fixed/consistent values. Set both explicitly before running Phase 3:")
         warn("  --docker-hostname <your machine's hostname>   (Windows: run `hostname` or check %COMPUTERNAME%)")
         warn("  --docker-mac-address <your machine's MAC>      (Windows: run `getmac /v`)")
-        warn("...and re-run Phase 3 (or edit run_docker_app.cmd/.sh directly before re-running it).")
+        warn("...or re-run Phase 3 after setting docker_hostname/docker_mac_address in your config file.")
 
     # Project root is always the current working directory
     if getattr(args, "project_dir", None):
@@ -2571,21 +2570,19 @@ def build_arg_parser():
     p.add_argument("--docker-platform",   help="Docker target platform, e.g. linux/amd64 or linux/arm64 "
                                                 "(default: auto-detected from host architecture)")
     p.add_argument("--docker-hostname", help="Fixed hostname to assign the container via 'docker run "
-                                              "--hostname' (default: the image name). JDBC drivers with "
-                                              "node-locked licensing (e.g. CData) may need this set to match "
-                                              "whatever hostname the license was actually issued/activated for "
-                                              "(e.g. your own machine's hostname), not an arbitrary value — "
-                                              "confirmed necessary for CData's Excel driver in practice "
-                                              "(2026-07-13), in addition to --docker-mac-address below.")
+                                              "--hostname' (default: the image name). For CData's Excel "
+                                              "driver, confirmed necessary (2026-07-14) AND must be set to "
+                                              "your actual host machine's real hostname (Windows: run "
+                                              "`hostname` or check %COMPUTERNAME%) — not an arbitrary fixed "
+                                              "value. Required together with --docker-mac-address below.")
     p.add_argument("--docker-mac-address", help="Fixed MAC address to assign the container via 'docker run "
-                                                 "--mac-address' (e.g. 02:42:ac:11:00:02). Needed for JDBC "
-                                                 "drivers with node-locked licensing (e.g. CData) that bind "
-                                                 "to the machine's MAC/hostname — without a fixed value, "
-                                                 "Docker assigns a new random MAC to the container on every "
-                                                 "run, invalidating such a license each time. Confirmed "
-                                                 "necessary (alongside --docker-hostname) for CData's Excel "
-                                                 "driver in practice (2026-07-13) — set it to match whatever "
-                                                 "MAC the license was actually issued/activated for.")
+                                                 "--mac-address' (e.g. 02:42:ac:11:00:02). Without a fixed "
+                                                 "value, Docker assigns a new random MAC to the container on "
+                                                 "every run. For CData's Excel driver, confirmed necessary "
+                                                 "(2026-07-14) AND must be set to your actual host machine's "
+                                                 "real MAC address (Windows: run `getmac /v`) — not an "
+                                                 "arbitrary fixed value. Required together with "
+                                                 "--docker-hostname above.")
     return p
 
 
