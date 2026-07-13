@@ -64,7 +64,7 @@ import sys
 import textwrap
 from pathlib import Path
 
-__version__ = "1.0.17"
+__version__ = "1.0.21"
 
 # ── Optional pretty output ────────────────────────────────────────────────────
 try:
@@ -425,6 +425,8 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
     elif "cockroachdb" in url_lower or "cockroach" in url_lower:
                                    cfg["url_db_type"] = "COCKROACHDB"
     elif "yugabyte"  in url_lower: cfg["url_db_type"] = "YUGABYTE"
+    elif "jdbc:excel:" in url_lower:
+                                   cfg["url_db_type"] = "EXCEL"
     else:                          cfg["url_db_type"] = ""
 
     # db_type: used only for JDX_DBTYPE= in the generated config.
@@ -436,6 +438,17 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
     if _explicit_db_type:
         cfg["db_type"] = _explicit_db_type
         verbose_info(f"JDX_DBTYPE explicitly set to: {cfg['db_type']}")
+    elif cfg["url_db_type"] == "EXCEL":
+        # EXPERIMENTAL (2026-07-12): default JDX_DBTYPE to MSACCESS rather than
+        # EXCEL for CData's Excel driver. MS Access and Excel both go through
+        # JDX's Jet/ACE-family DDL handling, and jdxMetadata_Access.jdx (which
+        # uses LONGTEXT for jdxMetaInfo) is confirmed to exist for MSACCESS —
+        # trying it here to see whether it avoids the DROP TABLE issue seen
+        # with the generic Excel path. Override with --db-type EXCEL (or
+        # anything else) if this doesn't pan out.
+        cfg["db_type"] = "MSACCESS"
+        verbose_info("JDX_DBTYPE defaulted to MSACCESS for Excel (experimental — "
+                     "override with --db-type if this doesn't resolve cleanly).")
     elif cfg["url_db_type"]:
         cfg["db_type"] = cfg["url_db_type"]
     else:
@@ -648,6 +661,11 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
                 break
             error("JDBC driver JAR path is required. Please enter a value.")
 
+    # Optional accompanying license file (e.g. CData drivers). No interactive
+    # prompt — auto-detected later as a same-stem .lic sibling of the jar;
+    # this only captures an explicit override via --jdbc-driver-lic / config.
+    cfg["jdbc_driver_lic"] = (args.jdbc_driver_lic or "").strip()
+
     # Preserve the as-configured (host-side) driver-jar path before any
     # Docker-mode override below. setEnvironment.bat/.sh and JDXDemo.bat/.sh
     # need this value — they're meant to be runnable directly on the host
@@ -811,6 +829,28 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
         verbose_info(f"Docker platform (from config/CLI): {cfg['docker_platform']}")
     else:
         verbose_info(f"Docker platform (auto-detected from host): {cfg['docker_platform']}")
+
+    # Optional fixed MAC address for the container (node-locked JDBC driver
+    # licenses, e.g. CData). No default — only passed to `docker run` if set.
+    cfg["docker_mac_address"] = (getattr(args, "docker_mac_address", None) or "").strip()
+    if cfg["docker_mac_address"]:
+        verbose_info(f"Docker container MAC address (pinned): {cfg['docker_mac_address']}")
+
+    # Optional fixed hostname for the container. Defaults to the image name
+    # if unset — but for node-locked JDBC licensing (e.g. CData) that default
+    # may not match what the license was actually issued/activated for.
+    cfg["docker_hostname"] = (getattr(args, "docker_hostname", None) or "").strip()
+    if cfg["docker_hostname"]:
+        verbose_info(f"Docker container hostname (pinned): {cfg['docker_hostname']}")
+
+    if cfg.get("url_db_type") == "EXCEL" and not (cfg["docker_mac_address"] and cfg["docker_hostname"]):
+        warn("Excel/CData: confirmed in practice (2026-07-13) that the CData driver's license check needs "
+             "BOTH the container's hostname AND MAC address to match whatever they were issued/activated "
+             "for — not arbitrary values. If Gilhari fails at startup with a 'valid license not found' "
+             "error, set both explicitly:")
+        warn("  --docker-hostname <your machine's hostname>   (Windows: run `hostname` or check %COMPUTERNAME%)")
+        warn("  --docker-mac-address <your machine's MAC>      (Windows: run `getmac /v`)")
+        warn("...and re-run Phase 3 (or edit run_docker_app.cmd/.sh directly before re-running it).")
 
     # Project root is always the current working directory
     if getattr(args, "project_dir", None):
@@ -1041,6 +1081,10 @@ _METADATA_JDX = {
     "YUGABYTE": "jdxMetadata_postgres.jdx",  # PostgreSQL-compatible
     "HANA":     "jdxMetadata_saphana.jdx",   # SAP HANA — uses CLOB for jdxMetaInfo (HANA JDBC rejects "text")
     "SAPHANA":  "jdxMetadata_saphana.jdx",   # SAP HANA alias
+    "EXCEL":    "jdxMetadata_Access.jdx",    # EXPERIMENTAL (2026-07-12): CData Excel driver, via JDX_DBTYPE=MSACCESS.
+                                              # Uses LONGTEXT for jdxMetaInfo. Testing whether this avoids the
+                                              # DROP TABLE issue seen with the generic Excel/jdxMetadata.jdx path.
+    "MSACCESS": "jdxMetadata_Access.jdx",    # MS Access proper, same template
     "GENERIC":  "jdxMetadata.jdx",           # generic/unknown databases
 }
 
@@ -1338,6 +1382,22 @@ def generate_template_config(cfg: dict, table_class_map: dict) -> Path:
     # in the original URL, this carries the injected ?currentSchema= parameter so
     # the JDX runtime resolves tables in the correct schema.
     _jdx_url = cfg.get("effective_jdbc_url") or cfg["jdbc_url"]
+
+    # Excel (CData JDBC driver): default to ReadOnly=True unless the user has
+    # already specified ReadOnly= explicitly. Without this, JDX's schema
+    # initialization (JDXSchema -metaForceCreate, triggered whenever it
+    # doesn't find a JDXMetadata table/sheet) will attempt DROP TABLE /
+    # CREATE TABLE against the live Excel sheet — DROP succeeds and destroys
+    # the sheet's data, then CREATE fails because the generated SQL isn't
+    # compatible with the CData driver. ReadOnly=True makes the driver reject
+    # those statements outright instead of executing the destructive half.
+    if cfg.get("url_db_type") == "EXCEL" and "readonly=" not in _jdx_url.lower():
+        _sep = "&" if "?" in _jdx_url and ";" not in _jdx_url else ";"
+        _jdx_url = _jdx_url.rstrip(";") + f"{_sep}ReadOnly=True"
+        verbose_info("Excel/CData JDBC URL: added ReadOnly=True by default "
+                     "(prevents JDX schema-init from DROP/CREATE-ing the sheet; "
+                     "set ReadOnly=False explicitly in jdbc_url if you need write access).")
+
     jdx_db_line = (
         f"JDX_DATABASE JDX:{_jdx_url};"
         f"USER={jdx_user};PASSWORD={jdx_password};"
@@ -1603,19 +1663,44 @@ def copy_jdbc_jar_to_config(cfg: dict):
     Copy the JDBC driver JAR into config/ so it is co-located with the ORM
     spec files and can be bundled into a Gilhari Docker image cleanly.
     Skipped silently if the JAR is already inside config/.
+
+    Also copies an accompanying license file if one exists — some JDBC
+    drivers (e.g. CData's) ship as jar + .lic side by side and fail at
+    runtime with a "valid license not found" error if only the jar is
+    bundled into the image. Auto-detected as a same-stem sibling file
+    (cdata.jdbc.excel.jar -> cdata.jdbc.excel.lic); an explicit path via
+    cfg["jdbc_driver_lic"] / --jdbc-driver-lic overrides the auto-detection
+    for drivers that don't follow that naming convention.
     """
     root       = cfg["project_root"]
     driver_jar = Path(cfg["jdbc_driver_jar"]).resolve()
     config_dir = (root / CONFIG_DIR).resolve()
     dest       = config_dir / driver_jar.name
 
-    if driver_jar.parent.resolve() == config_dir:
+    already_in_config = driver_jar.parent.resolve() == config_dir
+    if already_in_config:
         info(f"JDBC driver JAR already in config/: {driver_jar.name}")
-        return
+    else:
+        config_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(driver_jar), str(dest))
+        info(f"JDBC driver JAR copied to config/{driver_jar.name}  (for Docker packaging)")
 
-    config_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(str(driver_jar), str(dest))
-    info(f"JDBC driver JAR copied to config/{driver_jar.name}  (for Docker packaging)")
+    # License file: explicit override wins; otherwise look for a same-stem
+    # .lic file next to the jar.
+    _explicit_lic = (cfg.get("jdbc_driver_lic") or "").strip()
+    lic_src = Path(_explicit_lic).resolve() if _explicit_lic else driver_jar.with_suffix(".lic")
+
+    if lic_src.is_file():
+        lic_dest = config_dir / lic_src.name
+        if lic_src.resolve() == lic_dest.resolve():
+            info(f"JDBC driver license already in config/: {lic_src.name}")
+        else:
+            config_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(lic_src), str(lic_dest))
+            info(f"JDBC driver license copied to config/{lic_src.name}  (for Docker packaging)")
+    elif _explicit_lic:
+        warn(f"jdbc_driver_lic was set to {_explicit_lic!r} but that file was not found — "
+             f"the Docker image will be built without it.")
 
 
 # ==============================================================================
@@ -2273,12 +2358,23 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         _mount_flag_cmd = f" -v \"{_ma}\""
         _mount_flag_sh  = f" -v \"{_ma}\""
 
+    # --hostname defaults to the image name for stability across runs (Docker
+    # otherwise assigns a new semi-random hostname per container), but is
+    # overridable via cfg["docker_hostname"] — confirmed necessary for CData's
+    # Excel driver (2026-07-13), which needs the hostname to match whatever
+    # the license was actually issued/activated for, not an arbitrary value.
+    # --mac-address is only added if explicitly configured (same reasoning).
+    _hostname_value = cfg.get("docker_hostname") or image_name
+    _identity_flags_cmd = f' --hostname {_hostname_value}'
+    if cfg.get("docker_mac_address"):
+        _identity_flags_cmd += f' --mac-address {cfg["docker_mac_address"]}'
+
     # ── run_docker_app.cmd / run_docker_app.sh ────────────────────────────────
     (root / "run_docker_app.cmd").write_text(
         f"@echo off\r\n"
         f"setlocal enabledelayedexpansion\r\n"
         f"REM Check if service is already running and healthy\r\n"
-        f"curl -fs --max-time 3 http://localhost:{host_port}/gilhari/v1/health/check >nul 2>&1\r\n"
+        f"curl.exe -fs --max-time 3 http://localhost:{host_port}/gilhari/v1/health/check >nul 2>&1\r\n"
         f"if not errorlevel 1 (\r\n"
         f"    echo Gilhari microservice is already running and healthy.\r\n"
         f"    echo REST base URL: http://localhost:{host_port}/gilhari/v1/\r\n"
@@ -2286,13 +2382,13 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         f")\r\n"
         f"REM Remove any existing container with this name (stopped or running)\r\n"
         f"docker rm -f {image_name} >nul 2>&1\r\n"
-        f"docker run --platform {cfg['docker_platform']} -d --name {image_name}{_mount_flag_cmd} -p {host_port}:{service_port} {image_name}:{image_tag}\r\n"
+        f"docker run --platform {cfg['docker_platform']}{_identity_flags_cmd} -d --name {image_name}{_mount_flag_cmd} -p {host_port}:{service_port} {image_name}:{image_tag}\r\n"
         f"\r\n"
         f"echo Waiting for Gilhari microservice to start...\r\n"
         f"echo (This may take up to 3 minutes for cloud or remote databases)\r\n"
         f"set READY=0\r\n"
         f"for /L %%i in (1,1,18) do (\r\n"
-        f"    curl -fs http://localhost:{host_port}/gilhari/v1/health/check >nul 2>&1\r\n"
+        f"    curl.exe -fs http://localhost:{host_port}/gilhari/v1/health/check >nul 2>&1\r\n"
         f"    if not errorlevel 1 set READY=1\r\n"
         f"    if !READY!==1 goto :done\r\n"
         f"    timeout /t 10 /nobreak >nul\r\n"
@@ -2304,7 +2400,7 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         f") else (\r\n"
         f"    echo Service did not respond after 180 seconds.\r\n"
         f"    echo The container may still be starting. Check: docker logs {image_name}\r\n"
-        f"    echo To check if it started later: curl -s http://localhost:{host_port}/gilhari/v1/health/check\r\n"
+        f"    echo To check if it started later: curl.exe -s http://localhost:{host_port}/gilhari/v1/health/check\r\n"
         f"    exit /b 1\r\n"
         f")\r\n",
         encoding="utf-8"
@@ -2313,6 +2409,10 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
     # does not resolve (e.g. Docker Desktop on macOS without network config,
     # or Linux). Not needed for file-based DBs which use volume mounts.
     _add_host_flag = "" if _file_db else " --add-host=host.docker.internal:host-gateway"
+
+    _identity_flags_sh = f' --hostname {_hostname_value}'
+    if cfg.get("docker_mac_address"):
+        _identity_flags_sh += f' --mac-address {cfg["docker_mac_address"]}'
 
     write_sh(root / "run_docker_app.sh",
         f"#!/bin/bash\n"
@@ -2324,7 +2424,7 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         f"fi\n"
         f"# Remove any existing container with this name (stopped or running)\n"
         f"docker rm -f {image_name} > /dev/null 2>&1 || true\n"
-        f"docker run --platform {cfg['docker_platform']}{_add_host_flag} -d --name {image_name}{_mount_flag_sh} -p {host_port}:{service_port} {image_name}:{image_tag}\n"
+        f"docker run --platform {cfg['docker_platform']}{_identity_flags_sh}{_add_host_flag} -d --name {image_name}{_mount_flag_sh} -p {host_port}:{service_port} {image_name}:{image_tag}\n"
         f"\n"
         f"echo \"Waiting for Gilhari microservice to start...\"\n"
         f"echo \"(This may take up to 3 minutes for cloud or remote databases)\"\n"
@@ -2449,6 +2549,10 @@ def build_arg_parser():
     p.add_argument("--db-type",           help="DB type (MYSQL/POSTGRES/ORACLE/MSSQL/SQLITE/DB2/SNOWFLAKE/MARIADB/DATABRICKS/SPANNER/COCKROACHDB/YUGABYTE — auto-detected from URL if omitted)")
     p.add_argument("--jdbc-driver-class", help="JDBC driver class name")
     p.add_argument("--jdbc-driver-jar",   help="Path to JDBC driver JAR")
+    p.add_argument("--jdbc-driver-lic",   help="Path to an accompanying JDBC driver license file, if the driver "
+                                                "needs one (e.g. CData drivers). Auto-detected by default as a "
+                                                "same-stem .lic file next to the jar; only set this if your "
+                                                "license file doesn't follow that naming convention.")
     p.add_argument("--jx-home",           help="JX_HOME - root of JDX or Gilhari installation")
     p.add_argument("--jdx-dev-bin-path",  help="Optional path to JDX dev build bin/ (prepended to classpath for SDK development testing)")
     p.add_argument("--object-model-package", help="Java package for generated model classes")
@@ -2466,6 +2570,22 @@ def build_arg_parser():
     p.add_argument("--gilhari-host-port",      help="Host port for Gilhari REST service (default: 80)")
     p.add_argument("--docker-platform",   help="Docker target platform, e.g. linux/amd64 or linux/arm64 "
                                                 "(default: auto-detected from host architecture)")
+    p.add_argument("--docker-hostname", help="Fixed hostname to assign the container via 'docker run "
+                                              "--hostname' (default: the image name). JDBC drivers with "
+                                              "node-locked licensing (e.g. CData) may need this set to match "
+                                              "whatever hostname the license was actually issued/activated for "
+                                              "(e.g. your own machine's hostname), not an arbitrary value — "
+                                              "confirmed necessary for CData's Excel driver in practice "
+                                              "(2026-07-13), in addition to --docker-mac-address below.")
+    p.add_argument("--docker-mac-address", help="Fixed MAC address to assign the container via 'docker run "
+                                                 "--mac-address' (e.g. 02:42:ac:11:00:02). Needed for JDBC "
+                                                 "drivers with node-locked licensing (e.g. CData) that bind "
+                                                 "to the machine's MAC/hostname — without a fixed value, "
+                                                 "Docker assigns a new random MAC to the container on every "
+                                                 "run, invalidating such a license each time. Confirmed "
+                                                 "necessary (alongside --docker-hostname) for CData's Excel "
+                                                 "driver in practice (2026-07-13) — set it to match whatever "
+                                                 "MAC the license was actually issued/activated for.")
     return p
 
 
@@ -2547,6 +2667,125 @@ def _validate_table_selection(tables_arg: str, all_tables: list) -> list:
             # Loop back to show remaining invalid names
 
 
+CREATE_JDXMETADATA_TABLE_JAVA = """\
+import java.sql.*;
+
+public class CreateJdxMetadataHelper {
+    public static void main(String[] args) throws Exception {
+        String url    = args[0];
+        String user   = args[1];
+        String pass   = args[2];
+
+        Connection con = DriverManager.getConnection(url, user, pass);
+        // Always use a metadata existence check rather than
+        // CREATE TABLE IF NOT EXISTS: some JDBC drivers (e.g. CData's Excel
+        // driver, which maps CREATE TABLE to creating a new sheet) don't
+        // reliably support that syntax, while a plain existence check works
+        // universally regardless of driver SQL dialect support.
+        java.sql.ResultSet rs = con.getMetaData().getTables(
+            null, null, "JDXMetadata", new String[]{"TABLE"});
+        boolean exists = rs.next();
+        rs.close();
+        if (!exists) {
+            con.createStatement().executeUpdate(
+                "CREATE TABLE JDXMetadata (" +
+                "jdxORMId varchar(80), " +
+                "jdxTimestamp varchar(80), " +
+                "jdxMetaVersionId varchar(80), " +
+                "jdxMetaFileName varchar(80), " +
+                "jdxMetaInfo LONGTEXT)");
+            System.out.println("JDXMetadata table created.");
+        } else {
+            System.out.println("JDXMetadata table already exists.");
+        }
+        con.close();
+    }
+}
+"""
+
+
+def ensure_jdxmetadata_table_excel(cfg: dict):
+    """
+    Excel/CData only. Pre-creates an empty JDXMetadata table (via a direct
+    JDBC CREATE TABLE, executed through the CData driver itself — which maps
+    it to creating a new sheet) before JDX or Gilhari ever connects.
+
+    This follows the officially documented approach for using JDX/Gilhari
+    against a legacy database with existing data (Gilhari_README.pdf,
+    "Using Legacy Data in an Existing Database"): the mere *existence* of a
+    JDXMetadata table, empty or not, tells JDX the database has already been
+    initialized, so it skips its normal behavior of dropping and recreating
+    the mapped tables on first connection. Column types (varchar(80) /
+    LONGTEXT for jdxMetaInfo) match jdxMetadata_Access.jdx, which is also
+    now used as JDX_METADATA_FILE for Excel connections (see url_db_type
+    handling in collect_inputs and the _METADATA_JDX lookup).
+
+    Must run BEFORE the first list_tables_via_java() call in run_phase1, so
+    the freshly created table is visible in that table listing (and
+    therefore auto-excluded from table selection like any other JDX-internal
+    table) — and, more importantly, before Gilhari's own first connection in
+    a later phase, since that appears to be where the reported DROP TABLE
+    against a user sheet actually originated (JDX's Phase 1 -metaForceCreate
+    tool only ever touches JDXMetadata/JDXSequence, confirmed separately in
+    ensure_jdxmetadata_via_jdxschema — the destructive behavior described in
+    the README matches Gilhari's runtime schema-init on first connection,
+    not the Phase 1 CLI tool).
+
+    Non-fatal if the helper fails to compile/run for any reason — falls back
+    to the documented manual fix (run the CREATE TABLE by hand, or via any
+    SQL client that can reach the workbook through the CData driver) rather
+    than blocking Phase 1.
+    """
+    if cfg.get("url_db_type") != "EXCEL":
+        return
+
+    header("Phase 1 - Step 4b - Excel: Pre-create JDXMetadata Table")
+
+    tmp = cfg["project_root"] / ".tmp_helper"
+    tmp.mkdir(parents=True, exist_ok=True)
+
+    try:
+        src = tmp / "CreateJdxMetadataHelper.java"
+        src.write_text(CREATE_JDXMETADATA_TABLE_JAVA, encoding="utf-8")
+
+        driver_jar = cfg["jdbc_driver_jar"]
+        cp = SEP.join([str(tmp), driver_jar])
+
+        ret = subprocess.run(["javac", "-cp", cp, str(src)],
+                             capture_output=True, text=True)
+        if ret.returncode != 0:
+            warn("Could not compile the JDXMetadata pre-create helper class.")
+            warn(ret.stderr)
+            warn("Falling back to the manual fix: run this SQL by hand against "
+                 "the workbook (e.g. via any client using the CData driver) "
+                 "before re-running if Phase 1 or Gilhari startup drops a sheet:")
+            warn("  CREATE TABLE JDXMetadata (jdxORMId varchar(80), jdxTimestamp "
+                 "varchar(80), jdxMetaVersionId varchar(80), jdxMetaFileName "
+                 "varchar(80), jdxMetaInfo LONGTEXT)")
+            return
+
+        # Use effective_jdbc_url so any schema-qualification is honoured,
+        # consistent with ensure_jdxtestconnection.
+        _url = cfg.get("effective_jdbc_url") or cfg["jdbc_url"]
+        cmd = ["java", "-cp", cp, "CreateJdxMetadataHelper",
+               _url, cfg["db_user"], cfg["db_password"]]
+        ret = subprocess.run(cmd, capture_output=True, text=True)
+        if ret.returncode != 0:
+            warn("Could not pre-create the JDXMetadata table.")
+            warn(ret.stderr)
+            warn("Falling back to the manual fix: run this SQL by hand against "
+                 "the workbook before re-running:")
+            warn("  CREATE TABLE JDXMetadata (jdxORMId varchar(80), jdxTimestamp "
+                 "varchar(80), jdxMetaVersionId varchar(80), jdxMetaFileName "
+                 "varchar(80), jdxMetaInfo LONGTEXT)")
+            return
+        info(ret.stdout.strip() if ret.stdout else "")
+    finally:
+        if tmp.exists():
+            shutil.rmtree(str(tmp))
+            verbose_info("Cleaned up .tmp_helper/ directory (JDXMetadata pre-create step).")
+
+
 def run_phase1(cfg: dict, args) -> tuple:
     """
     Runs steps 1a-1g:
@@ -2562,6 +2801,12 @@ def run_phase1(cfg: dict, args) -> tuple:
     """
     # Select tables
     header("Phase 1 - Step 5 - Select Tables to Expose")
+
+    # Excel/CData: pre-create an empty JDXMetadata table via JDBC before we
+    # even list tables, so JDX/Gilhari see the workbook as already-initialized
+    # and the table itself is naturally excluded from selection like other
+    # JDX-internal tables (see select_tables()'s JDX_INTERNAL filtering).
+    ensure_jdxmetadata_table_excel(cfg)
 
     # List tables from the database
     all_tables = list_tables_via_java(cfg)
@@ -3111,16 +3356,16 @@ def write_curl_write_scripts(cfg: dict, class_names: list):
             if rdbms_gen:
                 lines.append(f"REM Note: {', '.join(sorted(rdbms_gen))} {'is' if len(rdbms_gen)==1 else 'are'} auto-generated (RDBMS_GENERATED) — do not supply {'it' if len(rdbms_gen)==1 else 'them'}")
             lines += [
-                f'REM curl -s -X POST %BASE_URL%/{cls} -H "Content-Type: application/json" -d "{{\\\"entity\\\": {_post_body(cls)}}}"',
+                f'REM curl.exe -s -X POST %BASE_URL%/{cls} -H "Content-Type: application/json" -d "{{\\\"entity\\\": {_post_body(cls)}}}"',
                 "",
                 f"REM PUT: Update a specific {cls} object (supply primary key + all attributes)",
-                f'REM curl -s -X PUT %BASE_URL%/{cls}/updateEntity -H "Content-Type: application/json" -d "{{\\\"entity\\\": {_put_body(cls, cmd=True)}}}"',
+                f'REM curl.exe -s -X PUT %BASE_URL%/{cls}/updateEntity -H "Content-Type: application/json" -d "{{\\\"entity\\\": {_put_body(cls, cmd=True)}}}"',
                 "",
                 f"REM PATCH: Bulk-update {cls} objects matching a filter (returns count of updated objects)",
-                f'REM curl -s -X PATCH "%BASE_URL%/{cls}?filter={_pk_filter(cls)}" -H "Content-Type: application/json" -d "{{\\\"newValues\\\": {_patch_new_values(cls, cmd=True)}}}"',
+                f'REM curl.exe -s -X PATCH "%BASE_URL%/{cls}?filter={_pk_filter(cls)}" -H "Content-Type: application/json" -d "{{\\\"newValues\\\": {_patch_new_values(cls, cmd=True)}}}"',
                 "",
                 f"REM DELETE: Delete {cls} objects matching a filter",
-                f'REM curl -s -X DELETE "%BASE_URL%/{cls}?filter={_pk_filter(cls)}"',
+                f'REM curl.exe -s -X DELETE "%BASE_URL%/{cls}?filter={_pk_filter(cls)}"',
                 "",
             ]
         return "\r\n".join(lines) + "\r\n"
@@ -3214,12 +3459,12 @@ def write_curl_scripts(cfg: dict, class_names: list):
             "",
             "REM -- Health check --",
             "echo ** Health check >> curl.log",
-            'curl -s "http://localhost:%port%/gilhari/v1/health/check" | python -m json.tool >> curl.log',
+            'curl.exe -s "http://localhost:%port%/gilhari/v1/health/check" | python -m json.tool >> curl.log',
             "echo. >> curl.log",
             "",
             "REM -- Object model summary (plain text response, not JSON) --",
             "echo ** Object model summary >> curl.log",
-            'curl -s "http://localhost:%port%/gilhari/v1/getObjectModelSummary/now" >> curl.log',
+            'curl.exe -s "http://localhost:%port%/gilhari/v1/getObjectModelSummary/now" >> curl.log',
             "echo. >> curl.log",
             "",
         ]
@@ -3227,12 +3472,12 @@ def write_curl_scripts(cfg: dict, class_names: list):
             lines += [
                 f"REM -- GET {cls} objects - deep (includes related objects, up to {max_obj}) --",
                 f"echo ** GET {cls} objects (deep) >> curl.log",
-                f'curl -s -X GET "http://localhost:%port%/gilhari/v1/{cls}?deep=true&maxObjects={max_obj}" -H "Content-Type: application/json" | python -m json.tool >> curl.log',
+                f'curl.exe -s -X GET "http://localhost:%port%/gilhari/v1/{cls}?deep=true&maxObjects={max_obj}" -H "Content-Type: application/json" | python -m json.tool >> curl.log',
                 "echo. >> curl.log",
                 "",
                 f"REM -- GET {cls} objects - shallow (excludes related objects, up to {max_obj}) --",
                 f"echo ** GET {cls} objects (shallow) >> curl.log",
-                f'curl -s -X GET "http://localhost:%port%/gilhari/v1/{cls}?deep=false&maxObjects={max_obj}" -H "Content-Type: application/json" | python -m json.tool >> curl.log',
+                f'curl.exe -s -X GET "http://localhost:%port%/gilhari/v1/{cls}?deep=false&maxObjects={max_obj}" -H "Content-Type: application/json" | python -m json.tool >> curl.log',
                 "echo. >> curl.log",
                 "",
             ]
@@ -3739,6 +3984,7 @@ def main():
             "db_type":           "db_type",
             "jdbc_driver_class": "jdbc_driver_class",
             "jdbc_driver_jar":   "jdbc_driver_jar",
+            "jdbc_driver_lic":   "jdbc_driver_lic",
             "jx_home":           "jx_home",
             "jdx_dev_bin_path":  "jdx_dev_bin_path",
             "object_model_package":  "object_model_package",
@@ -3754,6 +4000,8 @@ def main():
             "gilhari_host_port": "gilhari_host_port",
             "embed_db_file_in_microservice": "embed_db_file_in_microservice",
             "docker_platform":   "docker_platform",
+            "docker_mac_address": "docker_mac_address",
+            "docker_hostname":   "docker_hostname",
             "verbose":           "verbose",
         }
         for json_key, arg_dest in key_map.items():
