@@ -1,6 +1,6 @@
 # Command-Line Reference
 
-_Last updated: 2026-05-18 13:32 PDT_
+_Last updated: 2026-07-14 PDT_
 
 ← [README](../README.md)
 
@@ -33,7 +33,7 @@ CLI flags always override values in the config file. Any value not supplied via 
 | `--db-schema SCHEMA` | Database schema/catalog to inspect (blank = default) |
 | `--db-user USER` | Database username |
 | `--db-password PASSWORD` | Database password |
-| `--db-type TYPE` | `MYSQL` / `POSTGRES` / `ORACLE` / `MSSQL` / `SQLITE` (auto-detected from URL if omitted) |
+| `--db-type TYPE` | `MYSQL` / `POSTGRES` / `ORACLE` / `MSSQL` / `SQLITE` / `SNOWFLAKE` / `COCKROACHDB` (auto-detected from URL if omitted). These are the ✅ Verified database types — see the [Supported Databases table](../README.md#supported-databases) in the README. Additional experimental types (`DB2`, `MARIADB`, `DATABRICKS`, `SPANNER`, `YUGABYTE`, and others JDX accepts verbatim) are also supported but not yet fully verified — see [configuration.md](configuration.md) for the full list. |
 | `--jdbc-driver-class CLASS` | JDBC driver class name |
 | `--jdbc-driver-jar PATH` | Full path to the JDBC driver JAR |
 | `--jx-home PATH` | Root directory of the Gilhari SDK installation |
