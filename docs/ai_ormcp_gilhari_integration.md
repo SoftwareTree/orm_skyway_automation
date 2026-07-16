@@ -1,6 +1,6 @@
 # Phase 5 — ORMCP / AI Agent Integration
 
-_Last updated: 2026-06-13 11:38 PDT_
+_Last updated: 2026-07-16_
 
 **Goal:** Connect your running Gilhari microservice to an AI agent so it can query and interact with your business data through natural language.
 
@@ -25,10 +25,11 @@ The `model_overview` you provided during Phase 1 is embedded in the ORM spec and
 
 ## Step 1 — Install ORMCP Server
 
-**Production (after beta):**
 ```bat
 pip install ormcp-server
 ```
+
+No account, token, or beta-access request is needed — this installs from public PyPI directly.
 
 > **macOS note — virtual environment location:** If you install ORMCP inside a virtual environment, do not create the venv inside `~/Desktop/` or `~/Documents/`. macOS restricts access to these folders for apps without Full Disk Access, and Claude Desktop will throw a `PermissionError` when trying to read `pyvenv.cfg`. Create the venv in an unrestricted location instead, for example:
 > ```bash
@@ -38,11 +39,7 @@ pip install ormcp-server
 > ```
 > Then point Claude Desktop's `"command"` to `~/.ormcp-venv/bin/ormcp-server`.
 
-**Beta users:** Request access at [softwaretree.com/products/ormcp](https://www.softwaretree.com/v1/products/ormcp/ormcp-introduction.php) to receive your token, then:
-```bat
-pip install --index-url https://YOUR_TOKEN@pypi.fury.io/softwaretree/ ^
-  --extra-index-url https://pypi.org/simple ormcp-server
-```
+**If you have an existing Gemfury token** from an earlier beta install, it still works, but it's no longer required.
 
 ---
 

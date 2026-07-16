@@ -182,7 +182,7 @@ Then add one entry to your AI client config. For **Claude Desktop** (`claude_des
 
 Claude Desktop starts the ORMCP server automatically — no separate terminal needed. You can then ask things like *"Show me all orders placed this month"* and it queries your database through your curated domain model.
 
-> **Beta:** ORMCP is currently in beta. Request access at [softwaretree.com/products/ormcp](https://www.softwaretree.com/v1/products/ormcp/ormcp-introduction.php).
+> **Beta:** ORMCP is currently in beta — free to use for testing and evaluation, not yet for production. No account or access request is needed to install it; `pip install ormcp-server` works directly. See [softwaretree.com/products/ormcp](https://www.softwaretree.com/v1/products/ormcp/ormcp-introduction.php) for details.
 
 ---
 

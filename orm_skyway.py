@@ -3064,21 +3064,15 @@ natural language.
 
 ## Step 1 — Install ORMCP Server
 
-**After beta (public PyPI):**
 ```bash
 pip install ormcp-server
 ```
 
+No account, token, or beta-access request is needed — this installs from public PyPI directly.
+
 > **macOS note — virtual environment location:** Do not create your venv inside `~/Desktop/` or `~/Documents/`. macOS restricts access to these folders for apps without Full Disk Access, causing Claude Desktop to throw a `PermissionError` on `pyvenv.cfg`. Use an unrestricted location instead, e.g. `~/.ormcp-venv`.
 
-
-**Beta users** — request access at
-[softwaretree.com/products/ormcp](https://www.softwaretree.com/v1/products/ormcp/ormcp-introduction.php)
-then install with your token:
-```bash
-pip install --index-url https://YOUR_TOKEN@pypi.fury.io/softwaretree/ \
-  --extra-index-url https://pypi.org/simple ormcp-server
-```
+**If you have an existing Gemfury token** from an earlier beta install, it still works, but it's no longer required.
 
 ---
 
