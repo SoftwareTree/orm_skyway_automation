@@ -3197,7 +3197,7 @@ def _parse_jdx_for_curl(jdx_path: Path) -> dict:
         return {}
     for line in text.splitlines():
         line = line.strip()
-        m = re.match(r'^CLASS \.\s*(\w+)\s+TABLE', line)
+        m = re.match(r'^CLASS\s+\.?(\w+)\s+TABLE', line)
         if m:
             current = m.group(1)
             classes[current] = {"attribs": {}, "rdbms_generated": set(), "pk": []}
