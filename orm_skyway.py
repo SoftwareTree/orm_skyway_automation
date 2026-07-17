@@ -68,7 +68,7 @@ import sys
 import textwrap
 from pathlib import Path
 
-__version__ = "1.0.24"
+__version__ = "1.0.25"
 
 # ── Optional pretty output ────────────────────────────────────────────────────
 try:
@@ -733,7 +733,7 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
             if not cfg["host_jx_home"]:
                 info(
                     "No local JDX installation is configured for this project "
-                    "(jx_home is blank). JDXDemo.bat/.sh cannot run inside this "
+                    f"(jx_home is blank). {SCRIPTS_DIR}/JDXDemo.bat/.sh cannot run inside this "
                     "container (Swing GUI needs a display), so they need a usable "
                     "JX_HOME on the host to run there instead."
                 )
@@ -2061,7 +2061,7 @@ def _create_jdx_sandbox(cfg: dict):
     as JX_HOME — or None on failure.
 
     For users with no local JDX install at all. They still need *some* local
-    JDK (java/javac) on the host to run JDXDemo.bat/.sh — this sandbox only
+    JDK (java/javac) on the host to run scripts/JDXDemo.bat/.sh — this sandbox only
     supplies the JDX classes and license, which are pure platform-independent
     Java bytecode/text. The JDK binaries inside the image are Linux ELF
     binaries and cannot be extracted for use on Windows/macOS hosts.
@@ -2124,7 +2124,7 @@ def revert_docker_url_in_host_artifacts(cfg: dict, config_path: Path):
     using the Docker-rewritten JDBC URL (host.docker.internal) because that's
     what's needed for the live connection during reverse engineering. But
     these specific files are also meant to remain directly usable on the
-    host afterward — most importantly for JDXDemo.bat/.sh, which cannot run
+    host afterward — most importantly for scripts/JDXDemo.bat/.sh, which cannot run
     inside the orm_skyway container at all (see host_jx_home). So once
     generation is done, rewrite the embedded URL in these files back to the
     original host-facing value. (.docker.jdx, generated later in Phase 3, is
@@ -2194,11 +2194,11 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
                  discovered from bin/ so they reflect post-Phase-2 state.
 
     Files written:
-      config/classnames_map.json   - maps short REST name -> FQN
-      gilhari_service.config     - runtime service configuration (JSON)
-      Dockerfile                 - builds image from softwaretree/gilhari base
-      build.cmd / build.sh       - docker build scripts
-      run_docker_app.cmd / .sh   - docker run scripts
+      config/classnames_map.json     - maps short REST name -> FQN
+      gilhari/gilhari_service.config - runtime service configuration (JSON)
+      gilhari/Dockerfile             - builds image from softwaretree/gilhari base
+      gilhari/build.cmd / build.sh   - docker build scripts
+      gilhari/run_docker_app.cmd / .sh - docker run scripts
     """
     import json as _json
 
@@ -2395,7 +2395,7 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
                 f"{_prefix}{_sep}{_db_stem}.trace.db",
             ]
             _di_content = "\n".join(_di_lines) + "\n"
-            _dockerignore_path.write_text(_di_content)
+            _dockerignore_path.write_text(_di_content, encoding="utf-8")
             verbose_info(f"Written: .dockerignore  (excludes {_db_stem} and companions)")
 
     # ── run_docker_app.cmd / run_docker_app.sh ────────────────────────────────
@@ -2511,8 +2511,11 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
     # ── Optional: docker build ────────────────────────────────────────────────
     header("Phase 3 - Step 7 - Build Docker Image")
     docker_built = False
+    docker_build_attempted = False
     if yn_confirm("Run 'docker build' now?", default=True):
-        cmd = ["docker", "build", "--platform", cfg["docker_platform"], "-t", f"{image_name}:{image_tag}", "."]
+        docker_build_attempted = True
+        cmd = ["docker", "build", "--platform", cfg["docker_platform"],
+               "-f", f"{GILHARI_DIR}/Dockerfile", "-t", f"{image_name}:{image_tag}", "."]
         info(f"Running: {' '.join(cmd)}")
         if _running_in_docker():
             info(
@@ -2527,9 +2530,10 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         else:
             error("docker build failed (see output above).")
     else:
-        info("Skipping docker build — run build.cmd / build.sh manually when ready.")
+        info(f"Skipping docker build — run {GILHARI_DIR}/build.cmd / build.sh manually when ready.")
 
     cfg["_docker_built"] = docker_built
+    cfg["_docker_build_attempted"] = docker_build_attempted
 
 # ==============================================================================
 # 11. SUMMARY
@@ -2540,8 +2544,18 @@ def print_summary(cfg: dict, config_path: Path, table_class_map: dict):
     rev_file = config_path.with_suffix(".config.revjdx")
     jdx_file = config_path.with_suffix(".config.jdx")
     pkg_rel  = pkg_to_rel(cfg["object_model_package"])
+    docker_built = cfg.get("_docker_built", False)
+    docker_build_attempted = cfg.get("_docker_build_attempted", False)
+    docker_build_failed = docker_build_attempted and not docker_built
 
-    header("Workflow Complete - Summary")
+    header("Workflow Complete - Summary" if not docker_build_failed else "Workflow INCOMPLETE — Docker Build Failed")
+    if docker_build_failed:
+        warn(
+            f"⚠ Docker image was NOT built — the 'docker build' step failed. "
+            f"Run {GILHARI_DIR}\\build.cmd (Windows) or ./{GILHARI_DIR}/build.sh (macOS/Linux) manually before Phase 4."
+        )
+    elif not docker_built:
+        info(f"Docker build deferred — run {GILHARI_DIR}\\build.cmd (Windows) or ./{GILHARI_DIR}/build.sh (macOS/Linux) when ready.")
 
     rows = [
         ("Project root",              str(root)),
@@ -2552,7 +2566,11 @@ def print_summary(cfg: dict, config_path: Path, table_class_map: dict):
         ("Compiled classes",          str(Path(BIN_DIR) / pkg_rel)),
         ("JDBC JAR in config/",       str(Path(CONFIG_DIR) / Path(cfg["jdbc_driver_jar"]).name)),
         ("Tables / Classes",          ", ".join(f"{t}->{c}" for t, c in table_class_map.items())),
-        ("Docker image",              f"{cfg.get('docker_image_name', '?')}:{cfg.get('docker_image_tag', '1.0')}"),
+        ("Docker image",              f"{cfg.get('docker_image_name', '?')}:{cfg.get('docker_image_tag', '1.0')}" + (
+            "" if docker_built
+            else "  ⚠ NOT BUILT — build failed, see above" if docker_build_failed
+            else "  (not built yet — deferred)"
+        )),
         ("REST base URL",             f"http://localhost:{cfg.get('gilhari_host_port', 80)}/gilhari/v1/<ClassName>"),
     ]
 
@@ -3104,8 +3122,8 @@ natural language.
 
 - The `{image_name}` Gilhari microservice must be running:
   ```
-  run_docker_app.cmd    # Windows
-  ./run_docker_app.sh   # macOS / Linux
+  gilhari\\run_docker_app.cmd    # Windows
+  ./gilhari/run_docker_app.sh   # macOS / Linux
   ```
 - ORMCP Server must be installed (see below).
 
@@ -3224,7 +3242,7 @@ Once connected, try asking your AI agent:
 """
 
     guide_path = root / GILHARI_DIR / "connectORMCP.md"
-    guide_path.write_text(guide)
+    guide_path.write_text(guide, encoding="utf-8")
     info(f"ORMCP connection guide written: {GILHARI_DIR}/connectORMCP.md")
 
 
@@ -3302,16 +3320,16 @@ def write_curl_write_scripts(cfg: dict, class_names: list):
     def _curl_placeholder_cmd(type_str: str) -> str:
         """Return a JSON placeholder value with cmd-style escaping for string values."""
         t = type_str.lower()
-        if "string"    in t: return '\\\\\\"sample_value\\\\\\"'
+        if "string"    in t: return '\\"sample_value\\"'
         if "bigdecimal"in t: return '0.00'
         if "double"    in t: return '0.0'
         if "float"     in t: return '0.0'
         if "long"      in t: return '1'
         if "int"       in t: return '1'
         if "boolean"   in t: return 'true'
-        if "timestamp" in t: return '\\\\\\"2026-01-01T00:00:00\\\\\\"'
-        if "date"      in t: return '\\\\\\"2026-01-01\\\\\\"'
-        return '\\\\\\"value\\\\\\"'
+        if "timestamp" in t: return '\\"2026-01-01T00:00:00\\"'
+        if "date"      in t: return '\\"2026-01-01\\"'
+        return '\\"value\\"'
 
     def _post_body(cls):
         """Build a POST entity body excluding RDBMS_GENERATED attributes (cmd format)."""
@@ -3320,8 +3338,8 @@ def write_curl_write_scripts(cfg: dict, class_names: list):
         rdbms_gen = info.get("rdbms_generated", set())
         post_attribs = {k: v for k, v in attribs.items() if k not in rdbms_gen}
         if not post_attribs:
-            return '{\\\\\\"field1\\\\\\": \\\\\\"value1\\\\\\"}'
-        pairs = ", ".join(f'\\\\\\"{ k}\\\\\\": {_curl_placeholder_cmd(v)}' for k, v in post_attribs.items())
+            return '{\\"field1\\": \\"value1\\"}'
+        pairs = ", ".join(f'\\"{ k}\\": {_curl_placeholder_cmd(v)}' for k, v in post_attribs.items())
         return '{' + pairs + '}'
 
     def _post_body_sh(cls):
@@ -3350,9 +3368,9 @@ def write_curl_write_scripts(cfg: dict, class_names: list):
         info = jdx_classes.get(cls, {})
         attribs = info.get("attribs", {})
         if not attribs:
-            return '{\\\\\\"field1\\\\\\": \\\\\\"value1\\\\\\"}' if cmd else '{"field1": "value1"}'
+            return '{\\"field1\\": \\"value1\\"}' if cmd else '{"field1": "value1"}'
         if cmd:
-            pairs = ", ".join(f'\\\\\\"{ k}\\\\\\": {_curl_placeholder_cmd(v)}' for k, v in attribs.items())
+            pairs = ", ".join(f'\\"{ k}\\": {_curl_placeholder_cmd(v)}' for k, v in attribs.items())
         else:
             pairs = ", ".join(f'"{k}": {_curl_placeholder(v)}' for k, v in attribs.items())
         return '{' + pairs + '}'
@@ -3368,13 +3386,13 @@ def write_curl_write_scripts(cfg: dict, class_names: list):
             update_attribs = attribs
         first_k, first_v = next(iter(update_attribs.items()))
         if cmd:
-            return f'[\\\\\\"{ first_k}\\\\\\", {_curl_placeholder_cmd(first_v)}]'
+            return f'[\\"{ first_k}\\", {_curl_placeholder_cmd(first_v)}]'
         else:
             return f'["{first_k}", {_curl_placeholder(first_v)}]'
 
     def _cmd():
         lines = [
-            "REM sampleCurlWriteCommands.cmd — Example write operations (POST, PUT, PATCH, DELETE) for this Gilhari service",
+            "REM sampleCurlWriteCommands.cmd -- Example write operations (POST, PUT, PATCH, DELETE) for this Gilhari service",
             "REM Generated by orm_skyway.py",
             "REM",
             "REM All curl commands below are commented out (REM) to prevent accidental",
@@ -3394,7 +3412,7 @@ def write_curl_write_scripts(cfg: dict, class_names: list):
                 f"REM POST: Insert a new {cls} object",
             ]
             if rdbms_gen:
-                lines.append(f"REM Note: {', '.join(sorted(rdbms_gen))} {'is' if len(rdbms_gen)==1 else 'are'} auto-generated (RDBMS_GENERATED) — do not supply {'it' if len(rdbms_gen)==1 else 'them'}")
+                lines.append(f"REM Note: {', '.join(sorted(rdbms_gen))} {'is' if len(rdbms_gen)==1 else 'are'} auto-generated (RDBMS_GENERATED) -- do not supply {'it' if len(rdbms_gen)==1 else 'them'}")
             lines += [
                 f'REM curl.exe -s -X POST %BASE_URL%/{cls} -H "Content-Type: application/json" -d "{{\\\"entity\\\": {_post_body(cls)}}}"',
                 "",
@@ -3623,7 +3641,7 @@ def write_curl_scripts(cfg: dict, class_names: list):
             ".orm_skyway_license_accepted\n"
             "\n"
             "# softwaretree/orm_skyway Docker image: extracted JDX SDK jars +\n"
-            "# license, for running JDXDemo.bat/.sh on this host -- regenerable,\n"
+            "# license, for running scripts/JDXDemo.bat/.sh on this host -- regenerable,\n"
             "# host-specific, and includes a license file, so not for VCS\n"
             "jdx_sandbox/\n"
         )
@@ -3733,7 +3751,24 @@ def run_phase3(cfg: dict):
     image_tag  = cfg.get("docker_image_tag", "1.0")
     host_port  = cfg.get("gilhari_host_port", 80)
 
-    header("Phase 3 Complete - Summary")
+    # Read _docker_built / _docker_build_attempted BEFORE building the summary
+    # rows, so the table and header reflect what actually happened rather
+    # than just the intended name/tag. A failed build attempt is a real
+    # problem worth flagging loudly; declining the prompt to build later
+    # (the documented "pause between phases" workflow) is not — the two
+    # get different treatment below rather than lumping both under "not built".
+    docker_built = cfg.get("_docker_built", False)
+    docker_build_attempted = cfg.get("_docker_build_attempted", False)
+    docker_build_failed = docker_build_attempted and not docker_built
+
+    header("Phase 3 Complete - Summary" if not docker_build_failed else "Phase 3 INCOMPLETE — Docker Build Failed")
+    if docker_build_failed:
+        warn(
+            f"⚠ Docker image was NOT built — the 'docker build' step above failed. "
+            f"Run {GILHARI_DIR}\\build.cmd (Windows) or ./{GILHARI_DIR}/build.sh (macOS/Linux) manually before Phase 4."
+        )
+    elif not docker_built:
+        info(f"Docker build deferred — run {GILHARI_DIR}\\build.cmd (Windows) or ./{GILHARI_DIR}/build.sh (macOS/Linux) when ready.")
     rows = [
         ("ORM spec (.jdx)",       str(jdx_file.relative_to(root)) + "  (local/JDXDemo use)"),
         ("ORM spec (.docker.jdx)", str((root / CONFIG_DIR / f"{config_name}.config.docker.jdx").relative_to(root)) + "  (packaged in Docker image)"),
@@ -3741,7 +3776,11 @@ def run_phase3(cfg: dict):
         ("classnames_map.json",  str(Path(CONFIG_DIR) / "classnames_map.json")),
         ("gilhari_service.config", f"{GILHARI_DIR}/gilhari_service.config"),
         ("Dockerfile",         f"{GILHARI_DIR}/Dockerfile"),
-        ("Docker image",       f"{image_name}:{image_tag}"),
+        ("Docker image",       f"{image_name}:{image_tag}" + (
+            "" if docker_built
+            else "  ⚠ NOT BUILT — build failed, see above" if docker_build_failed
+            else "  (not built yet — deferred)"
+        )),
         ("REST base URL",      f"http://localhost:{host_port}/gilhari/v1/<ClassName>"),
         ("Classes",            ", ".join(class_names)),
     ]
@@ -3756,7 +3795,6 @@ def run_phase3(cfg: dict):
         for k, v in rows:
             print(f"  {k:28} {v}")
 
-    docker_built = cfg.get("_docker_built", False)
     print()
     info("Next steps (Phase 4 — manual):")
     step = 1
@@ -3765,7 +3803,9 @@ def run_phase3(cfg: dict):
         print(f"        {GILHARI_DIR}\\build.cmd               (Windows)")
         print(f"        ./{GILHARI_DIR}/build.sh              (macOS / Linux)")
         step += 1
-    print(f"  4{chr(96+step)}. Run {GILHARI_DIR}/run_docker_app.cmd / ./{GILHARI_DIR}/run_docker_app.sh to start the service.")
+    print(f"  4{chr(96+step)}. Run to start the service:")
+    print(f"        {GILHARI_DIR}\\run_docker_app.cmd         (Windows)")
+    print(f"        ./{GILHARI_DIR}/run_docker_app.sh        (macOS / Linux)")
     step += 1
     print(f"  4{chr(96+step)}. Verify the service is running:")
     print(f"        curl -s http://localhost:{host_port}/gilhari/v1/health/check | python3 -m json.tool")
