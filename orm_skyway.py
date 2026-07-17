@@ -12,7 +12,11 @@ Project layout created beneath the current directory:
   config/    ORM specs (.config, .revjdx, .jdx), JDBC driver copy
   src/       Generated .java model classes (<package path>)
   bin/       Compiled .class files (<package path>)
-  *.bat/.sh  Helper scripts
+  scripts/   Phase 1 helper scripts (setEnvironment, JDXReverseEngineer,
+             compile, JDXDemo) — *.bat/.sh
+  gilhari/   Phase 3 Gilhari build/runtime artifacts (gilhari_service.config,
+             Dockerfile, build/run scripts, sample curl scripts,
+             connectORMCP.md) — *.cmd/.sh
 
 WORKFLOW
 --------
@@ -64,7 +68,7 @@ import sys
 import textwrap
 from pathlib import Path
 
-__version__ = "1.0.23"
+__version__ = "1.0.24"
 
 # ── Optional pretty output ────────────────────────────────────────────────────
 try:
@@ -149,9 +153,11 @@ def phase_separator(title: str):
 SEP = ";" if IS_WINDOWS else ":"
 
 # Fixed subdirectory names — matches standard JDX/Gilhari project layout
-SRC_DIR    = "src"
-BIN_DIR    = "bin"
-CONFIG_DIR = "config"
+SRC_DIR     = "src"
+BIN_DIR     = "bin"
+CONFIG_DIR  = "config"
+SCRIPTS_DIR = "scripts"   # general build/reverse-eng scripts (Phase 1)
+GILHARI_DIR = "gilhari"   # Gilhari build-time/runtime artifacts (Phase 3)
 
 # Verbose output flag — set to True via --verbose flag or "verbose": true in config
 _VERBOSE = False
@@ -741,8 +747,8 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
                         cfg["host_jx_home"] = _sandbox_host_jx_home
                 if not cfg["host_jx_home"]:
                     warn(
-                        "setEnvironment.bat/.sh will be written with an empty JX_HOME — "
-                        "fill it in manually before running JDXDemo.bat/.sh outside the container."
+                        f"{SCRIPTS_DIR}/setEnvironment.bat/.sh will be written with an empty JX_HOME — "
+                        f"fill it in manually before running {SCRIPTS_DIR}/JDXDemo.bat/.sh outside the container."
                     )
         else:
             if args.jx_home:
@@ -1477,31 +1483,49 @@ def write_helper_scripts(cfg: dict, config_path: Path, selected_tables: list):
         _java9p = False
     javac_flags = "javac --release 8" if _java9p else "javac -source 8 -target 8"
 
+    # Ensure scripts/ exists — general build/reverse-eng scripts live here,
+    # parallel to src/, bin/, config/. Not rmtree'd on rerun: this is a fixed,
+    # known set of filenames, fully overwritten by name every run, so there's
+    # no orphan-file risk the way there is for src/ and bin/ (schema-dependent
+    # generated code). Overwriting by name is enough.
+    (root / SCRIPTS_DIR).mkdir(parents=True, exist_ok=True)
+
+    # Every script below starts by cd-ing to the project root (its own
+    # directory's parent), so bin/, config/, src/, and sources.txt keep
+    # resolving exactly as they did when these scripts lived at project root
+    # — regardless of where the script is invoked from. Cross-references to
+    # sibling scripts (setEnvironment.*) are prefixed with scripts/ since,
+    # post-cd, that's their location relative to the now-current root.
+
     # setEnvironment.sh
-    write_sh(root / "setEnvironment.sh", textwrap.dedent(f"""\
+    write_sh(root / SCRIPTS_DIR / "setEnvironment.sh", textwrap.dedent(f"""\
         #!/bin/bash
+        cd "$(dirname "$0")/.."
         export JX_HOME="{jx_home}"
         export CLASSPATH=.:{BIN_DIR}:{CONFIG_DIR}{f':{cfg["jdx_dev_bin_path"]}' if cfg.get("jdx_dev_bin_path") else ""}:"$JX_HOME/libs/jxclasses.jar":"$JX_HOME/libs/jdxtools.jar":"$JX_HOME/external_libs/json-20240303.jar":"{driver_jar}"
     """))
 
     # setEnvironment.bat
-    (root / "setEnvironment.bat").write_text(textwrap.dedent(f"""\
+    (root / SCRIPTS_DIR / "setEnvironment.bat").write_text(textwrap.dedent(f"""\
         @echo off
+        cd /d "%~dp0.."
         set JX_HOME={jx_home}
         set CLASSPATH=.;{BIN_DIR};{CONFIG_DIR}{f";{cfg['jdx_dev_bin_path']}" if cfg.get("jdx_dev_bin_path") else ""};%JX_HOME%\\libs\\jxclasses.jar;%JX_HOME%\\libs\\jdxtools.jar;%JX_HOME%\\external_libs\\json-20240303.jar;{driver_jar}
     """), encoding="utf-8")
 
     # JDXReverseEngineer.sh
-    write_sh(root / "JDXReverseEngineer.sh", textwrap.dedent(f"""\
+    write_sh(root / SCRIPTS_DIR / "JDXReverseEngineer.sh", textwrap.dedent(f"""\
         #!/bin/bash
-        source ./setEnvironment.sh
+        cd "$(dirname "$0")/.."
+        source ./{SCRIPTS_DIR}/setEnvironment.sh
         java -DJX_HOME="$JX_HOME" com.softwaretree.jdxtools.JDXSchema -reverseEng {rel_config}
     """))
 
     # JDXReverseEngineer.bat
-    (root / "JDXReverseEngineer.bat").write_text(textwrap.dedent(f"""\
+    (root / SCRIPTS_DIR / "JDXReverseEngineer.bat").write_text(textwrap.dedent(f"""\
         @echo off
-        call setEnvironment
+        cd /d "%~dp0.."
+        call {SCRIPTS_DIR}\\setEnvironment
         java -DJX_HOME=%JX_HOME% com.softwaretree.jdxtools.JDXSchema -reverseEng {rel_config}
     """), encoding="utf-8")
 
@@ -1511,9 +1535,10 @@ def write_helper_scripts(cfg: dict, config_path: Path, selected_tables: list):
     pkg_path_back = "\\".join(_pkg.split(".")) if _pkg else ""
 
     # compile.sh
-    write_sh(root / "compile.sh", textwrap.dedent(f"""\
+    write_sh(root / SCRIPTS_DIR / "compile.sh", textwrap.dedent(f"""\
         #!/bin/bash
-        source ./setEnvironment.sh
+        cd "$(dirname "$0")/.."
+        source ./{SCRIPTS_DIR}/setEnvironment.sh
         # Clean the package bin directory to remove stale .class files
         rm -rf {BIN_DIR}/{pkg_path_fwd}
         mkdir -p {BIN_DIR}/{pkg_path_fwd}
@@ -1528,9 +1553,10 @@ def write_helper_scripts(cfg: dict, config_path: Path, selected_tables: list):
     """))
 
     # compile.bat
-    (root / "compile.bat").write_text(textwrap.dedent(f"""\
+    (root / SCRIPTS_DIR / "compile.bat").write_text(textwrap.dedent(f"""\
         @echo off
-        call setEnvironment
+        cd /d "%~dp0.."
+        call {SCRIPTS_DIR}\\setEnvironment
         rem Clean the package bin directory to remove stale .class files
         if exist {BIN_DIR}\\{pkg_path_back} rmdir /s /q {BIN_DIR}\\{pkg_path_back}
         mkdir {BIN_DIR}\\{pkg_path_back}
@@ -1545,14 +1571,16 @@ def write_helper_scripts(cfg: dict, config_path: Path, selected_tables: list):
     """), encoding="utf-8")
 
     # JDXDemo.bat
-    (root / "JDXDemo.bat").write_text(textwrap.dedent("""        @echo off
-        call setEnvironment
+    (root / SCRIPTS_DIR / "JDXDemo.bat").write_text(textwrap.dedent(f"""        @echo off
+        cd /d "%~dp0.."
+        call {SCRIPTS_DIR}\\setEnvironment
         java -DJX_HOME=%JX_HOME% com.softwaretree.jdxtools.JDXDemo config\\JDXDemo.config
     """), encoding="utf-8")
 
     # JDXDemo.sh
-    write_sh(root / "JDXDemo.sh", textwrap.dedent("""        #!/bin/bash
-        source ./setEnvironment.sh
+    write_sh(root / SCRIPTS_DIR / "JDXDemo.sh", textwrap.dedent(f"""        #!/bin/bash
+        cd "$(dirname "$0")/.."
+        source ./{SCRIPTS_DIR}/setEnvironment.sh
         java -DJX_HOME="$JX_HOME" com.softwaretree.jdxtools.JDXDemo config/JDXDemo.config
     """))
 
@@ -2082,10 +2110,10 @@ def _create_jdx_sandbox(cfg: dict):
         )
         return None
 
-    info(f"setEnvironment.bat/.sh will use JX_HOME={host_path}")
+    info(f"{SCRIPTS_DIR}/setEnvironment.bat/.sh will use JX_HOME={host_path}")
     info(
         "Note: you still need a JDK (java/javac) installed on this host to run "
-        "JDXDemo.bat/.sh — the sandbox supplies only the JDX classes and license, "
+        f"{SCRIPTS_DIR}/JDXDemo.bat/.sh — the sandbox supplies only the JDX classes and license, "
         "not a JDK (the image's JDK is a Linux binary and can't be used on this host)."
     )
     return host_path
@@ -2224,9 +2252,14 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         "classnames_map_file":             classnames_map_file,
         "gilhari_rest_server_port":        service_port,
     }
-    svc_path = root / "gilhari_service.config"
+    # Ensure gilhari/ exists — Gilhari build-time/runtime artifacts live here,
+    # parallel to src/, bin/, config/, scripts/. Same no-rmtree reasoning as
+    # scripts/: fixed known filenames, fully overwritten by name every run.
+    (root / GILHARI_DIR).mkdir(parents=True, exist_ok=True)
+
+    svc_path = root / GILHARI_DIR / "gilhari_service.config"
     svc_path.write_text(_json.dumps(service_cfg, indent=2) + "\n", encoding="utf-8")
-    verbose_info("Written: gilhari_service.config")
+    verbose_info(f"Written: {GILHARI_DIR}/gilhari_service.config")
 
     # ── Dockerfile ────────────────────────────────────────────────────────────
     _db_info   = cfg.get("_db_file_info", {})
@@ -2244,9 +2277,11 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         f"",
         f"# bin/ includes all .class files (top-level and inner classes)",
         f"# config/ includes .docker.jdx ORM spec, JDBC driver JAR, classnames_map.json",
+        f"# Build context is the project root (see build.cmd/build.sh: docker build -f {GILHARI_DIR}/Dockerfile .)",
+        f"# so these ADD sources are still root-relative even though this Dockerfile lives in {GILHARI_DIR}/.",
         f"ADD bin ./bin",
         f"ADD config ./config",
-        f"ADD gilhari_service.config .",
+        f"ADD {GILHARI_DIR}/gilhari_service.config .",
     ]
     if _embed:
         # Embed mode: copy the DB directory into the image
@@ -2258,14 +2293,16 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
             _add_src  = str(_rel_host).replace("\\", "/")
         except ValueError:
             # host_db_dir is outside project root — copy to a temp location
-            _add_src  = f"db_embed"
+            # under gilhari/ (still root-relative, so the ADD path below
+            # resolves correctly against the project-root build context).
+            _add_src  = f"{GILHARI_DIR}/db_embed"
             import shutil as _shutil
-            _embed_tmp = root / "db_embed"
+            _embed_tmp = root / GILHARI_DIR / "db_embed"
             _embed_tmp.mkdir(exist_ok=True)
             import glob as _glob
             for _f in _host_dir.glob("*"):
                 _shutil.copy2(str(_f), str(_embed_tmp / _f.name))
-            warn(f"DB directory is outside project root — copied to db_embed/ for Docker packaging.")
+            warn(f"DB directory is outside project root — copied to {GILHARI_DIR}/db_embed/ for Docker packaging.")
         _dockerfile_lines += [
             f"",
             f"# SQLite/file-based database embedded in image (embed_db_file_in_microservice: true)",
@@ -2285,31 +2322,43 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         f'CMD ["node", "/node/node_modules/gilhari_rest_server/gilhari_rest_server.js", "gilhari_service.config"]',
     ]
     dockerfile = "\n".join(_dockerfile_lines) + "\n"
-    (root / "Dockerfile").write_text(dockerfile, encoding="utf-8")
-    verbose_info(f"Written: Dockerfile  ({image_name}:{image_tag}, port {host_port}->{service_port})")
+    (root / GILHARI_DIR / "Dockerfile").write_text(dockerfile, encoding="utf-8")
+    verbose_info(f"Written: {GILHARI_DIR}/Dockerfile  ({image_name}:{image_tag}, port {host_port}->{service_port})")
 
     # ── build.cmd / build.sh ──────────────────────────────────────────────────
     # The legacy-builder warning only fires when buildx isn't available, which
     # is true inside the orm_skyway image (bare docker.io CLI, no buildx
     # plugin) but not on a typical host with Docker Desktop. These scripts may
     # run in either context later, so check at runtime rather than assuming.
-    (root / "build.cmd").write_text(
+    # Both scripts cd to the project root first, since the Docker build
+    # context must be root (bin/, config/ live there) even though the
+    # Dockerfile itself now lives in gilhari/ — hence the explicit -f flag.
+    (root / GILHARI_DIR / "build.cmd").write_text(
+        f"@echo off\r\n"
+        f"cd /d \"%~dp0..\"\r\n"
         f"docker buildx version >nul 2>&1\r\n"
         f"if errorlevel 1 echo Note: a 'legacy builder is deprecated' warning below (if shown) is harmless.\r\n"
-        f"docker build --platform {cfg['docker_platform']} -t {image_name}:{image_tag} .\r\n"
+        f"docker build --platform {cfg['docker_platform']} -f {GILHARI_DIR}/Dockerfile -t {image_name}:{image_tag} .\r\n"
         f"docker images\r\n",
         encoding="utf-8"
     )
-    write_sh(root / "build.sh",
+    write_sh(root / GILHARI_DIR / "build.sh",
         f"#!/bin/bash\n"
+        f"cd \"$(dirname \"$0\")/..\"\n"
         f"docker buildx version >/dev/null 2>&1 || "
         f"echo \"Note: a 'legacy builder is deprecated' warning below (if shown) is harmless.\"\n"
-        f"docker build --platform {cfg['docker_platform']} -t {image_name}:{image_tag} .\n"
+        f"docker build --platform {cfg['docker_platform']} -f {GILHARI_DIR}/Dockerfile -t {image_name}:{image_tag} .\n"
         f"docker images\n"
     )
-    verbose_info("Written: build.cmd / build.sh")
+    verbose_info(f"Written: {GILHARI_DIR}/build.cmd / {GILHARI_DIR}/build.sh")
 
     # ── .dockerignore for file-based DBs ───────────────────────────────────
+    # Deliberately stays at project root, NOT in gilhari/ — Docker looks for
+    # .dockerignore relative to the build CONTEXT directory, not next to the
+    # Dockerfile. Since build.cmd/build.sh use "." (root) as the context and
+    # only -f to point at gilhari/Dockerfile, a relocated .dockerignore would
+    # simply be ignored and the DB file/companions would leak into the image.
+    #
     # In embed mode: remove any existing .dockerignore that might exclude the
     # DB file — a leftover from a previous mount-mode run would prevent the
     # ADD instruction from copying the DB file into the image.
@@ -2369,7 +2418,7 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         _identity_flags_cmd += f' --mac-address {cfg["docker_mac_address"]}'
 
     # ── run_docker_app.cmd / run_docker_app.sh ────────────────────────────────
-    (root / "run_docker_app.cmd").write_text(
+    (root / GILHARI_DIR / "run_docker_app.cmd").write_text(
         f"@echo off\r\n"
         f"setlocal enabledelayedexpansion\r\n"
         f"REM Check if service is already running and healthy\r\n"
@@ -2413,7 +2462,7 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
     if cfg.get("docker_mac_address"):
         _identity_flags_sh += f' --mac-address {cfg["docker_mac_address"]}'
 
-    write_sh(root / "run_docker_app.sh",
+    write_sh(root / GILHARI_DIR / "run_docker_app.sh",
         f"#!/bin/bash\n"
         f"# Check if service is already running and healthy\n"
         f"if curl -fs --max-time 3 \"http://localhost:{host_port}/gilhari/v1/health/check\" > /dev/null 2>&1; then\n"
@@ -2440,7 +2489,7 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         f"echo \"  To check if it started later: curl -s http://localhost:{host_port}/gilhari/v1/health/check\"\n"
         f"exit 1\n",
     )
-    verbose_info(f"Written: run_docker_app.cmd / run_docker_app.sh  (host port: {host_port})")
+    verbose_info(f"Written: {GILHARI_DIR}/run_docker_app.cmd / {GILHARI_DIR}/run_docker_app.sh  (host port: {host_port})")
 
     header("Phase 3 - Step 5 - Generate Sample Curl Scripts")
     write_curl_scripts(cfg, class_names)
@@ -2856,7 +2905,7 @@ def run_phase1(cfg: dict, args) -> tuple:
             jdx_path = copy_revjdx_to_jdx(config_path)
             cfg["jdx_path"] = jdx_path
         else:
-            warn("Skipping. Run JDXReverseEngineer.bat / .sh manually later.")
+            warn(f"Skipping. Run {SCRIPTS_DIR}/JDXReverseEngineer.bat / .sh manually later.")
             warn("Then copy the .revjdx to a .jdx file for downstream use.")
 
     # 1f - compile generated model classes
@@ -2869,7 +2918,7 @@ def run_phase1(cfg: dict, args) -> tuple:
             compile_classes(cfg)
             compiled = True
         else:
-            warn("Skipping. Run compile.bat / compile.sh manually later.")
+            warn(f"Skipping. Run {SCRIPTS_DIR}/compile.bat / compile.sh manually later.")
 
     # 1g - pre-create JDXTestConnection, then create JDXMetadata if absent.
     # JDXTestConnection must exist before JDXSchema -metaForceCreate runs to avoid
@@ -2882,7 +2931,7 @@ def run_phase1(cfg: dict, args) -> tuple:
         ensure_jdxmetadata_via_jdxschema(cfg, jdx_path, all_tables)
     elif jdx_path and not compiled:
         warn("Skipping JDXMetadata creation — compiled classes required but compilation was skipped.")
-        warn("Run compile.bat / compile.sh, then re-run Phase 1 or call JDXSchema -metaForceCreate manually.")
+        warn(f"Run {SCRIPTS_DIR}/compile.bat / compile.sh, then re-run Phase 1 or call JDXSchema -metaForceCreate manually.")
 
     # FA1: config/*.config, *.revjdx, *.jdx must keep working directly on the
     # host (JDXDemo can't run inside this container at all). All live
@@ -3174,9 +3223,9 @@ Once connected, try asking your AI agent:
 - [Gilhari SDK](https://softwaretree.com/v1/products/gilhari/gilhari_introduction.php)
 """
 
-    guide_path = root / "connectORMCP.md"
+    guide_path = root / GILHARI_DIR / "connectORMCP.md"
     guide_path.write_text(guide)
-    info("ORMCP connection guide written: connectORMCP.md")
+    info(f"ORMCP connection guide written: {GILHARI_DIR}/connectORMCP.md")
 
 
 # ==============================================================================
@@ -3400,13 +3449,13 @@ def write_curl_write_scripts(cfg: dict, class_names: list):
             ]
         return "\n".join(lines) + "\n"
 
-    cmd_path = root / "sampleCurlWriteCommands.cmd"
+    cmd_path = root / GILHARI_DIR / "sampleCurlWriteCommands.cmd"
     cmd_path.write_text(_cmd(), encoding="utf-8")
 
-    sh_path = root / "sampleCurlWriteCommands.sh"
+    sh_path = root / GILHARI_DIR / "sampleCurlWriteCommands.sh"
     write_sh(sh_path, _sh())
 
-    info("Sample curl write command scripts written: sampleCurlWriteCommands.cmd / sampleCurlWriteCommands.sh")
+    info(f"Sample curl write command scripts written: {GILHARI_DIR}/sampleCurlWriteCommands.cmd / {GILHARI_DIR}/sampleCurlWriteCommands.sh")
 
 
 def write_curl_scripts(cfg: dict, class_names: list):
@@ -3533,15 +3582,15 @@ def write_curl_scripts(cfg: dict, class_names: list):
         ]
         return "\n".join(lines) + "\n"
 
-    cmd_path = root / "sampleCurlCommands.cmd"
+    cmd_path = root / GILHARI_DIR / "sampleCurlCommands.cmd"
     cmd_path.write_text(_cmd(), encoding="utf-8")
 
-    sh_path = root / "sampleCurlCommands.sh"
+    sh_path = root / GILHARI_DIR / "sampleCurlCommands.sh"
     write_sh(sh_path, _sh())
 
-    info("Sample curl scripts written: sampleCurlCommands.cmd / sampleCurlCommands.sh")
+    info(f"Sample curl scripts written: {GILHARI_DIR}/sampleCurlCommands.cmd / {GILHARI_DIR}/sampleCurlCommands.sh")
     info("  Run them after starting the service to test some REST APIs.")
-    info("  Responses are logged to curl.log.")
+    info(f"  Responses are logged to {GILHARI_DIR}/curl.log.")
 
     # ── Project .gitignore ────────────────────────────────────────────────
     gitignore_path = root / ".gitignore"
@@ -3690,8 +3739,8 @@ def run_phase3(cfg: dict):
         ("ORM spec (.docker.jdx)", str((root / CONFIG_DIR / f"{config_name}.config.docker.jdx").relative_to(root)) + "  (packaged in Docker image)"),
         ("gilhari_service.config refs", f"config/{config_name}.config.docker.jdx"),
         ("classnames_map.json",  str(Path(CONFIG_DIR) / "classnames_map.json")),
-        ("gilhari_service.config", "gilhari_service.config"),
-        ("Dockerfile",         "Dockerfile"),
+        ("gilhari_service.config", f"{GILHARI_DIR}/gilhari_service.config"),
+        ("Dockerfile",         f"{GILHARI_DIR}/Dockerfile"),
         ("Docker image",       f"{image_name}:{image_tag}"),
         ("REST base URL",      f"http://localhost:{host_port}/gilhari/v1/<ClassName>"),
         ("Classes",            ", ".join(class_names)),
@@ -3713,20 +3762,20 @@ def run_phase3(cfg: dict):
     step = 1
     if not docker_built:
         print(f"  4{chr(96+step)}. Build the Docker image:")
-        print("        build.cmd               (Windows)")
-        print("        ./build.sh              (macOS / Linux)")
+        print(f"        {GILHARI_DIR}\\build.cmd               (Windows)")
+        print(f"        ./{GILHARI_DIR}/build.sh              (macOS / Linux)")
         step += 1
-    print(f"  4{chr(96+step)}. Run run_docker_app.cmd / ./run_docker_app.sh to start the service.")
+    print(f"  4{chr(96+step)}. Run {GILHARI_DIR}/run_docker_app.cmd / ./{GILHARI_DIR}/run_docker_app.sh to start the service.")
     step += 1
     print(f"  4{chr(96+step)}. Verify the service is running:")
     print(f"        curl -s http://localhost:{host_port}/gilhari/v1/health/check | python3 -m json.tool")
     step += 1
     print(f"  4{chr(96+step)}. Run the sample curl script to test some REST APIs:")
-    print("        sampleCurlCommands.cmd          (Windows)")
-    print("        ./sampleCurlCommands.sh         (macOS / Linux)")
-    print("        sampleCurlWriteCommands.cmd     (Windows, write ops — all commented out)")
-    print("        ./sampleCurlWriteCommands.sh    (macOS / Linux, write ops — all commented out)")
-    print("      Responses are logged to curl.log.")
+    print(f"        {GILHARI_DIR}\\sampleCurlCommands.cmd          (Windows)")
+    print(f"        ./{GILHARI_DIR}/sampleCurlCommands.sh         (macOS / Linux)")
+    print(f"        {GILHARI_DIR}\\sampleCurlWriteCommands.cmd     (Windows, write ops — all commented out)")
+    print(f"        ./{GILHARI_DIR}/sampleCurlWriteCommands.sh    (macOS / Linux, write ops — all commented out)")
+    print(f"      Responses are logged to {GILHARI_DIR}/curl.log.")
     print()
     info("Phase 5 — Connect an AI agent via ORMCP:")
     print("  See connectORMCP.md in the project directory for tailored")
@@ -4038,8 +4087,8 @@ def main():
             print(f"  1. Refine  config/{cfg['reverse_eng_template_config']}.config.jdx  as needed.")
             print("     (rename attributes, hide columns, adjust types, add transient fields, etc.)")
             print("  2. If you rename or add classes in the .jdx, update the corresponding")
-            print("     .java files in src/ and re-run compile.bat / compile.sh.")
-            print("  3. Optionally verify with JDXDemo.bat / ./JDXDemo.sh.")
+            print(f"     .java files in src/ and re-run {SCRIPTS_DIR}/compile.bat / compile.sh.")
+            print(f"  3. Optionally verify with {SCRIPTS_DIR}/JDXDemo.bat / ./{SCRIPTS_DIR}/JDXDemo.sh.")
             print()
             print("  When ready for Phase 3, run:")
             _script_path = sys.argv[0]

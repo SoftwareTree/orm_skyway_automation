@@ -1,6 +1,6 @@
 # Docker Mode — Run with Zero Local Prerequisites
 
-_Last updated: 2026-07-11 PDT_
+_Last updated: 2026-07-16 PDT_
 
 ← [README](../README.md)
 
@@ -82,7 +82,7 @@ A database on a remote server, or another Docker container by name, works exactl
 
 ## The one thing still required locally: a JDK, for `JDXDemo`
 
-[`JDXDemo`](orm_refinement.md#verifying-with-jdxdemo) is a graphical tool, and graphical tools can't run inside a Docker container — there's no display to draw to. To use `JDXDemo.bat`/`.sh` after Phase 1, you need a JDK on your own machine.
+[`JDXDemo`](orm_refinement.md#verifying-with-jdxdemo) is a graphical tool, and graphical tools can't run inside a Docker container — there's no display to draw to. To use `scripts/JDXDemo.bat`/`.sh` after Phase 1, you need a JDK on your own machine.
 
 If you don't have the JDX SDK installed locally either, the tool offers to set up a small `jdx_sandbox/` folder in your project the first time it's needed — just say yes when asked. That gets you the JDX classes and license; you'll still need *some* JDK already on your machine for `java`/`javac` to work.
 

@@ -98,7 +98,7 @@ notepad orm_skyway_config.json
 python C:\tools\orm_skyway_automation\orm_skyway.py -f orm_skyway_config.json --phase 1+3
 
 :: 5. Start the Gilhari microservice
-run_docker_app.cmd
+gilhari\run_docker_app.cmd
 
 :: 6. Verify
 curl -s http://localhost:80/gilhari/v1/health/check | python -m json.tool
@@ -123,7 +123,7 @@ nano orm_skyway_config.json   # or your preferred editor
 python ~/tools/orm_skyway_automation/orm_skyway.py -f orm_skyway_config.json --phase 1+3
 
 # 5. Start the Gilhari microservice
-./run_docker_app.sh
+./gilhari/run_docker_app.sh
 
 # 6. Verify
 curl -s http://localhost:80/gilhari/v1/health/check | python -m json.tool
@@ -137,7 +137,7 @@ Want to pause between phases to refine the ORM spec first?
 ```bat
 python C:\tools\orm_skyway_automation\orm_skyway.py -f orm_skyway_config.json --phase 1
 
-:: (optionally edit config\*.jdx, then recompile with compile.bat)
+:: (optionally edit config\*.jdx, then recompile with scripts\compile.bat)
 
 python C:\tools\orm_skyway_automation\orm_skyway.py -f orm_skyway_config.json --phase 3
 ```
@@ -146,7 +146,7 @@ python C:\tools\orm_skyway_automation\orm_skyway.py -f orm_skyway_config.json --
 ```bash
 python ~/tools/orm_skyway_automation/orm_skyway.py -f orm_skyway_config.json --phase 1
 
-# (optionally edit config/*.jdx, then recompile with ./compile.sh)
+# (optionally edit config/*.jdx, then recompile with ./scripts/compile.sh)
 
 python ~/tools/orm_skyway_automation/orm_skyway.py -f orm_skyway_config.json --phase 3
 ```
