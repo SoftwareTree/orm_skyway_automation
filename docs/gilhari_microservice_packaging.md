@@ -1,6 +1,6 @@
 # Phase 3 — Gilhari Microservice Packaging
 
-_Last updated: 2026-07-09 PDT_
+_Last updated: 2026-07-19 1:10 AM PDT_
 
 **Goal:** Package your object model into a self-contained Docker image that exposes a RESTful JSON API for every mapped class.
 
@@ -33,19 +33,19 @@ Scans `bin/<package path>/` for `.class` files to determine the current set of m
 
 | File | Purpose |
 |---|---|
-| `config/classnames_map.js` | Maps short REST URL tokens to fully-qualified class names, e.g. `Employee` → `com.example.json.model.Employee` |
+| `config/classnames_map.json` | Maps short REST URL tokens to fully-qualified class names, e.g. `Employee` → `com.example.json.model.Employee` |
 | `config/<n>.config.docker.jdx` | The Docker-ready ORM spec with `host.docker.internal` JDBC URL |
-| `gilhari_service.config` | Gilhari runtime config — points at the `.docker.jdx`, `classnames_map.js`, `bin/`, and `JDBC driver` |
-| `Dockerfile` | Builds on `FROM softwaretree/gilhari`, adding `bin/`, `config/`, and `gilhari_service.config` |
-| `build.cmd` / `build.sh` | Runs `docker build -t <image>:<tag> .` |
-| `run_docker_app.cmd` / `.sh` | Runs `docker run -p <host_port>:3000 <image>:<tag>` |
+| `gilhari/gilhari_service.config` | Gilhari runtime config — points at the `.docker.jdx`, `classnames_map.json`, `bin/`, and `JDBC driver` |
+| `gilhari/Dockerfile` | Builds on `FROM softwaretree/gilhari`, adding `bin/`, `config/`, and `gilhari_service.config` |
+| `gilhari/build.cmd` / `build.sh` | Runs `docker build -f gilhari/Dockerfile -t <image>:<tag> .` (build context is the project root; `-f` points at the relocated Dockerfile) |
+| `gilhari/run_docker_app.cmd` / `.sh` | Runs `docker run -p <host_port>:8081 <image>:<tag>` |
 
 ### Builds the Docker image
-At the end of Phase 3, the script asks whether to run `docker build` immediately. You can also build later using `build.cmd` or `./build.sh`.
+At the end of Phase 3, the script asks whether to run `docker build` immediately. You can also build later using `gilhari\build.cmd` or `./gilhari/build.sh`.
 
 ---
 
-## Why classnames_map.js?
+## Why classnames_map.json?
 
 Without it, REST URLs require the fully-qualified class name:
 ```
@@ -81,7 +81,7 @@ The script prints a summary of everything created, followed by the next steps fo
 
 The generated Dockerfile and build scripts use `--platform linux/amd64`. On Apple Silicon Macs (M1/M2/M3) this causes a platform mismatch warning during `docker build` and `docker run`. The container still runs correctly via emulation (Rosetta 2), but with a small performance overhead.
 
-A multi-architecture image (`linux/amd64` + `linux/arm64`) would eliminate the warning but requires `docker buildx` and a more complex build pipeline. This is not currently automated by ORM_Skyway. If you need native ARM64 performance, you can manually modify the generated `build.sh` to use `docker buildx build --platform linux/amd64,linux/arm64` — but this requires the Gilhari base image to also support ARM64.
+A multi-architecture image (`linux/amd64` + `linux/arm64`) would eliminate the warning but requires `docker buildx` and a more complex build pipeline. This is not currently automated by ORM_Skyway. If you need native ARM64 performance, you can manually modify the generated `gilhari/build.sh` to use `docker buildx build --platform linux/amd64,linux/arm64` — but this requires the Gilhari base image to also support ARM64.
 
 ---
 

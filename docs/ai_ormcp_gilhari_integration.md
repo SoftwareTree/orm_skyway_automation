@@ -1,6 +1,6 @@
 # Phase 5 — ORMCP / AI Agent Integration
 
-_Last updated: 2026-07-16_
+_Last updated: 2026-07-19 1:10 AM PDT_
 
 **Goal:** Connect your running Gilhari microservice to an AI agent so it can query and interact with your business data through natural language.
 
@@ -49,7 +49,7 @@ No account, token, or beta-access request is needed — this installs from publi
 curl -s http://localhost:80/gilhari/v1/health/check | python -m json.tool
 ```
 
-ORMCP connects to Gilhari at startup. Start Gilhari manually first (recommended) using the generated `run_docker_app.cmd` / `./run_docker_app.sh`.
+ORMCP connects to Gilhari at startup. Start Gilhari manually first (recommended) using the generated `gilhari\run_docker_app.cmd` / `./gilhari/run_docker_app.sh`.
 
 ---
 

@@ -1,6 +1,6 @@
 # Phase 1 — Reverse Engineering
 
-_Last updated: 2026-05-24 13:32 PDT_
+_Last updated: 2026-07-19 1:10 AM PDT_
 
 **Goal:** Connect to your existing database, select the tables you care about, and automatically generate a JSON object model and (JDX) ORM mapping specification.
 
@@ -84,14 +84,14 @@ The auto-generated `.revjdx` is copied to `.jdx` — your working ORM spec, whic
 All generated `.java` container model classes are compiled into `bin/<package path>/` (or directly into `bin/` if no package is specified). The entire `bin/` directory is wiped before compile to ensure no stale `.class` files from any previous run remain.
 
 ### Helper scripts
-Phase 1 also writes a set of platform-specific helper scripts into the project root:
+Phase 1 also writes a set of platform-specific helper scripts into the `scripts/` subdirectory:
 
 | Script | Purpose |
 |---|---|
-| `setEnvironment.bat` / `.sh` | Sets `JX_HOME` and `CLASSPATH` |
-| `JDXReverseEngineer.bat` / `.sh` | Runs `JDXSchema -reverseEng` manually if needed |
-| `compile.bat` / `.sh` | Recompiles model classes (cleans `bin/<pkg>/` first) |
-| `JDXDemo.bat` / `.sh` | Launches the JDXDemo tool for local model verification |
+| `scripts/setEnvironment.bat` / `.sh` | Sets `JX_HOME` and `CLASSPATH` |
+| `scripts/JDXReverseEngineer.bat` / `.sh` | Runs `JDXSchema -reverseEng` manually if needed |
+| `scripts/compile.bat` / `.sh` | Recompiles model classes (cleans `bin/<pkg>/` first) |
+| `scripts/JDXDemo.bat` / `.sh` | Launches the JDXDemo tool for local model verification |
 
 ---
 
@@ -111,10 +111,11 @@ bin/<package path>/         ← or bin/ directly if no package
     Customer.class          ← compiled classes
     Order.class
     ...
-setEnvironment.bat / .sh
-JDXReverseEngineer.bat / .sh
-compile.bat / .sh
-JDXDemo.bat / .sh
+scripts/
+    setEnvironment.bat / .sh
+    JDXReverseEngineer.bat / .sh
+    compile.bat / .sh
+    JDXDemo.bat / .sh
 ```
 
 ---

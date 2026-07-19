@@ -1,6 +1,6 @@
 # Phase 2 — ORM Refinement and Curation (Manual, Optional but Recommended)
 
-_Last updated: 2026-07-08 PDT_
+_Last updated: 2026-07-19 1:10 AM PDT_
 
 ## Why Phase 2 matters
 
@@ -86,8 +86,8 @@ This is one example of how Phase 2 refinement goes beyond cosmetic changes — i
 Some refinements require changes to both the `.jdx` and the corresponding `.java` source files in `src/<package path>/` — for example, renaming a class, adding a relationship, or adding a transient (runtime-only) attribute. After any `.java` changes, recompile:
 
 ```bat
-compile.bat       :: Windows
-./compile.sh      :: macOS / Linux
+scripts\compile.bat       :: Windows
+./scripts/compile.sh      :: macOS / Linux
 ```
 
 The compile script cleans `bin/<package path>/` first, removing stale `.class` files for any classes you removed.
@@ -101,8 +101,8 @@ The compile script cleans `bin/<package path>/` first, removing stale `.class` f
 JDXDemo is a tool included with the Gilhari SDK that lets you browse your object model and run queries against the live database — using the `localhost` URL in the `.jdx` — without spinning up Docker. It is a useful sanity check before building the Docker image, but it is optional.
 
 ```bat
-JDXDemo.bat       :: Windows
-./JDXDemo.sh      :: macOS / Linux
+scripts\JDXDemo.bat       :: Windows
+./scripts/JDXDemo.sh      :: macOS / Linux
 ```
 
 ---
