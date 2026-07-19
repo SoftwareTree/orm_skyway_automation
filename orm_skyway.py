@@ -69,6 +69,12 @@ import textwrap
 from pathlib import Path
 
 __version__ = "1.0.25"
+# Regenerated: 2026-07-19 12:18 AM PDT
+# This timestamp updates on every regeneration of this file, independent of
+# __version__ above -- __version__ is bumped manually, only once a change has
+# been verified, so multiple regenerations can share the same version number
+# in a single day. Use this timestamp (not __version__) to tell apart two
+# copies of the same version produced at different times.
 
 # ── Optional pretty output ────────────────────────────────────────────────────
 try:

@@ -1,6 +1,8 @@
 Copyright (c) 2025 SoftwareTree, Inc. All Rights Reserved.
 # Make Your Database AI-Ready — Automatically
 
+_Last updated: 2026-07-19 12:18 AM PDT_
+
 **Your business data is already in databases. The missing piece is making it accessible to AI.**
 
 **ORM_Skyway** automation tool connects your existing relational databases to AI agents — automatically. Point it at your database, and within minutes you have a secure, governed API layer that lets AI reason about your business objects: customers, orders, products, employees — whatever your domain holds.
