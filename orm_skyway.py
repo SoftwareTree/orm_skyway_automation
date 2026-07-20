@@ -69,7 +69,7 @@ import textwrap
 from pathlib import Path
 
 __version__ = "1.0.26"
-# Regenerated: 2026-07-20 1:25 AM PDT
+# Regenerated: 2026-07-20 1:50 AM PDT
 # This timestamp updates on every regeneration of this file, independent of
 # __version__ above -- __version__ is bumped manually, only once a change has
 # been verified, so multiple regenerations can share the same version number
@@ -865,15 +865,15 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
         getattr(args, "gilhari_host_port", None) or
         ask("Host port to expose Gilhari REST service on", "80")
     )
-    # Docker target platform — auto-detected from host CPU architecture so
-    # Apple Silicon (arm64) machines don't get an amd64-only image that fails
-    # to start. CLI flag / config file value always wins if supplied.
+    # Docker target platform — defaults to linux/amd64 (see
+    # _detect_docker_platform for why this isn't CPU-auto-detected). CLI
+    # flag / config file value always wins if supplied.
     _supplied_platform = (getattr(args, "docker_platform", None) or "").strip()
     cfg["docker_platform"] = _supplied_platform or _detect_docker_platform()
     if _supplied_platform:
         verbose_info(f"Docker platform (from config/CLI): {cfg['docker_platform']}")
     else:
-        verbose_info(f"Docker platform (auto-detected from host): {cfg['docker_platform']}")
+        verbose_info(f"Docker platform (default): {cfg['docker_platform']}")
 
     # Optional fixed MAC address for the container (node-locked JDBC driver
     # licenses, e.g. CData). No default — only passed to `docker run` if set.
@@ -2769,7 +2769,9 @@ def build_arg_parser():
     p.add_argument("--docker-image-tag",  help="Docker image tag (default: 1.0)")
     p.add_argument("--gilhari-host-port",      help="Host port for Gilhari REST service (default: 80)")
     p.add_argument("--docker-platform",   help="Docker target platform, e.g. linux/amd64 or linux/arm64 "
-                                                "(default: auto-detected from host architecture)")
+                                                "(default: linux/amd64 — softwaretree/gilhari is currently "
+                                                "single-arch; override only if you have a genuinely "
+                                                "multi-arch build to target)")
     p.add_argument("--docker-hostname", help="Fixed hostname to assign the container via 'docker run "
                                               "--hostname' (default: the image name). For CData's Excel "
                                               "driver, confirmed necessary (2026-07-14) AND must be set to "
