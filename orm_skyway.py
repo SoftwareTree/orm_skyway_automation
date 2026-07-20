@@ -68,8 +68,8 @@ import sys
 import textwrap
 from pathlib import Path
 
-__version__ = "1.0.25"
-# Regenerated: 2026-07-19 12:18 AM PDT
+__version__ = "1.0.26"
+# Regenerated: 2026-07-20 1:25 AM PDT
 # This timestamp updates on every regeneration of this file, independent of
 # __version__ above -- __version__ is bumped manually, only once a change has
 # been verified, so multiple regenerations can share the same version number
@@ -207,18 +207,22 @@ def _docker_safe_jdbc_url(jdbc_url: str) -> str:
 def _detect_docker_platform() -> str:
     """Best-effort default for --platform on `docker build` / `docker run`.
 
-    softwaretree/gilhari is published for both linux/amd64 and linux/arm64.
-    Previously the scripts hardcoded linux/amd64, which fails to start on
-    Apple Silicon (M1/M2/M3/M4) Macs — the image builds under amd64 emulation
-    but the container then fails to run correctly. Detect the host CPU
-    architecture and pick the matching platform; still overridable via
-    --docker-platform / "docker_platform" in the config file for anyone who
-    deliberately wants to target the other architecture (e.g. building an
-    amd64 image on Apple Silicon for deployment to an amd64 server).
+    Always returns linux/amd64. A prior version of this function auto-detected
+    the host CPU architecture and returned linux/arm64 on Apple Silicon, on the
+    assumption that softwaretree/gilhari was published for both linux/amd64
+    and linux/arm64. That assumption was wrong: confirmed 2026-07-20 that the
+    published image is single-arch (built via plain `docker build`, no buildx
+    --platform, on a Windows/x86_64 host) -- Docker Hub shows one digest, one
+    size, no multi-platform manifest. Auto-detecting arm64 on Apple Silicon
+    therefore made things strictly worse than the old hardcoded-amd64 default
+    (which at least worked via Rosetta 2 emulation): it now fails outright,
+    since the arm64 image doesn't exist to pull. Reverted to a hardcoded
+    default until softwaretree/gilhari is confirmed genuinely multi-arch on
+    Docker Hub (`docker buildx imagetools inspect softwaretree/gilhari:latest`
+    should show both platforms) -- at which point re-enabling auto-detection
+    here would be reasonable again. Still overridable via --docker-platform /
+    "docker_platform" in the config file regardless.
     """
-    machine = platform.machine().lower()
-    if machine in ("arm64", "aarch64"):
-        return "linux/arm64"
     return "linux/amd64"
 
 
@@ -828,6 +832,35 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
     cfg["embed_db_file_in_microservice"] = bool(
         getattr(args, "embed_db_file_in_microservice", False)
     )
+    # E1: credentials_via_env is an opt-in feature flag, config-file only (no
+    # CLI flag, same as embed_db_file_in_microservice above). Default is False
+    # (today's pre-E1 behavior, unchanged) whenever unset -- silently in --yes
+    # mode, via an interactive prompt otherwise. Originally this required an
+    # explicit true/false in --yes mode, erroring out otherwise; reverted
+    # 2026-07-20 because E1 has no documentation yet, so every existing
+    # tester's --yes config (all of which predate this flag) would hit a hard
+    # error over a feature they have no way to know about. Revisit requiring
+    # explicit --yes opt-in once E1 is documented and testers have had a
+    # chance to adopt it deliberately.
+    # getattr returns None only when the key was never present in the config
+    # file at all (the key_map merge in main() only setattr's when the JSON
+    # key exists, so an explicit `"credentials_via_env": false` is preserved
+    # and distinguishable from "never set").
+    _credentials_via_env_arg = getattr(args, "credentials_via_env", None)
+    if _credentials_via_env_arg is None:
+        if _YES:
+            cfg["credentials_via_env"] = False
+            verbose_info("credentials_via_env not set in config; defaulting to false (pre-E1 behavior).")
+        else:
+            cfg["credentials_via_env"] = yn_confirm(
+                "Enable credential hardening (E1) -- real DB credentials never baked into the "
+                "Docker image, supplied instead via gilhari/orm_skyway.env / JDX_DB_USER / "
+                "JDX_DB_PASSWORD at `docker run` time? Requires a JDX build with env-var "
+                "credential override.",
+                default=False
+            )
+    else:
+        cfg["credentials_via_env"] = bool(_credentials_via_env_arg)
     cfg["gilhari_host_port"] = int(
         getattr(args, "gilhari_host_port", None) or
         ask("Host port to expose Gilhari REST service on", "80")
@@ -2012,6 +2045,25 @@ def create_docker_jdx(cfg: dict, config_path: Path) -> Path:
         else:
             info(f"Docker ORM spec created: {docker_jdx.name}  (no URL change needed)")
 
+    # E1: Credentials out of the Docker image -- opt-in via credentials_via_env.
+    # The working .jdx carries real db_user/db_password so JDXDemo and local
+    # Java tools can connect directly. When this flag is on, .docker.jdx gets
+    # its USER=/PASSWORD= replaced with placeholders before being ADD'd into
+    # a Docker image layer (see write_gilhari_artifacts' Dockerfile), relying
+    # on JDX's DatabaseInfo to override them from the JDX_DB_USER /
+    # JDX_DB_PASSWORD environment variables at connection time (falls back to
+    # these placeholders -- and so fails to connect -- if those env vars
+    # aren't supplied; see gilhari/run_docker_app.cmd/.sh). When the flag is
+    # off (default), behavior is unchanged from before this feature existed:
+    # real credentials are written into .docker.jdx as they always were.
+    if cfg.get("credentials_via_env", False):
+        import re as _re4
+        docker_text = _re4.sub(
+            r'USER=[^;]*;PASSWORD=[^;]*;',
+            'USER=set_via_JDX_DB_USER_env;PASSWORD=set_via_JDX_DB_PASSWORD_env;',
+            docker_text
+        )
+
     docker_jdx.write_text(docker_text, encoding="utf-8")
     return docker_jdx
 
@@ -2248,7 +2300,17 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         verbose_info(f"  {short}  ->  {fqn}")
 
     # ── gilhari_service.config ────────────────────────────────────────────────
-    service_cfg = {
+    service_cfg = {}
+    if cfg.get("credentials_via_env", False):
+        service_cfg["_comment_credentials"] = (
+            "Do NOT add db_user / db_password (or similarly named credential) fields to this file. "
+            "Gilhari's REST server does support reading them from here, but this file is ADD'd into "
+            "the Docker image (see Dockerfile) and would bake real credentials into an image layer -- "
+            "the exact leak this generator avoids for config/*.docker.jdx. Use the JDX_DB_USER / "
+            "JDX_DB_PASSWORD environment variables at `docker run` time instead; JDX overrides the "
+            "connection's user/password from those at runtime, and they're never baked into the image."
+        )
+    service_cfg.update({
         "gilhari_microservice_name":       image_name,
         "jdx_orm_spec_file":               docker_jdx_rel,
         "jdbc_driver_path":                container_jar_path,
@@ -2257,7 +2319,7 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         "jdx_persistent_classes_location": "./bin",
         "classnames_map_file":             classnames_map_file,
         "gilhari_rest_server_port":        service_port,
-    }
+    })
     # Ensure gilhari/ exists — Gilhari build-time/runtime artifacts live here,
     # parallel to src/, bin/, config/, scripts/. Same no-rmtree reasoning as
     # scripts/: fixed known filenames, fully overwritten by name every run.
@@ -2423,9 +2485,72 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
     if cfg.get("docker_mac_address"):
         _identity_flags_cmd += f' --mac-address {cfg["docker_mac_address"]}'
 
+    # E1: DB credentials are never baked into the image (see create_docker_jdx)
+    # -- opt-in via credentials_via_env. Real values are supplied at
+    # `docker run` time via:
+    #   1. gilhari/orm_skyway.env -- a project-local, gitignored file passed
+    #      via `docker run --env-file`. Persists across sessions; created here
+    #      as an empty template on first Phase 3 run, never overwritten after
+    #      (so a filled-in file survives re-running Phase 3). Lives in
+    #      gilhari/ alongside the scripts that reference it, consistent with
+    #      how Dockerfile/gilhari_service.config were relocated there.
+    #   2. Shell export/set of JDX_DB_USER/JDX_DB_PASSWORD -- forwarded via
+    #      `-e VARNAME` (no `=value`), which only sets the container var if
+    #      the shell actually has it; an unset shell var is simply omitted,
+    #      so it never blanks out a value that came from orm_skyway.env.
+    #      Placed after --env-file so an explicit shell export can still
+    #      override the file's value for a one-off run.
+    # The --env-file path is root-relative (gilhari/orm_skyway.env), matching
+    # the Dockerfile's ADD-path convention -- so run_docker_app.cmd/.sh must
+    # self-locate to the project root first (same pattern already used by
+    # build.cmd/build.sh) whenever this flag is on. When off, no self-locating
+    # cd is added either, so the script is byte-for-byte what it was before
+    # this feature existed. Only relevant for DB types that need credentials
+    # (SQLite doesn't).
+    _creds_required = cfg.get("credentials_via_env", False) and cfg.get("url_db_type") != "SQLITE"
+    _env_file_rel = f"{GILHARI_DIR}/orm_skyway.env"   # root-relative
+    _env_file_path = root / GILHARI_DIR / "orm_skyway.env"
+
+    _selflocate_cmd = ""
+    _selflocate_sh = ""
+    _creds_flags_cmd = ""
+    _creds_warn_cmd = ""
+    _creds_flags_sh = ""
+    _creds_warn_sh = ""
+    if _creds_required:
+        (root / GILHARI_DIR).mkdir(parents=True, exist_ok=True)
+        if not _env_file_path.exists():
+            _env_file_path.write_text(
+                "# Real database credentials for the Gilhari container, read via\n"
+                "# `docker run --env-file` -- never baked into the Docker image (unlike\n"
+                "# putting them in config/*.docker.jdx or gilhari_service.config, both of\n"
+                "# which get ADD'd into an image layer). Do NOT commit this file --\n"
+                "# it's listed in .gitignore.\n"
+                "JDX_DB_USER=\n"
+                "JDX_DB_PASSWORD=\n",
+                encoding="utf-8"
+            )
+            info(f"Written: {_env_file_rel}  (fill in JDX_DB_USER / JDX_DB_PASSWORD before running run_docker_app)")
+        else:
+            verbose_info(f"{_env_file_rel} already exists — not overwritten.")
+
+        _selflocate_cmd = 'cd /d "%~dp0.."\r\n'
+        _selflocate_sh  = 'cd "$(dirname "$0")/.."\n'
+        _creds_flags_cmd = f' --env-file {_env_file_rel} -e JDX_DB_USER -e JDX_DB_PASSWORD'
+        _creds_flags_sh  = f' --env-file {_env_file_rel} -e JDX_DB_USER -e JDX_DB_PASSWORD'
+        _creds_warn_cmd = (
+            f'if not exist "{_env_file_rel}" if "%JDX_DB_USER%"=="" echo WARNING: Neither {_env_file_rel} nor JDX_DB_USER is set -- the container will fail to authenticate to the database.\r\n'
+            f'if not exist "{_env_file_rel}" if "%JDX_DB_PASSWORD%"=="" echo WARNING: Neither {_env_file_rel} nor JDX_DB_PASSWORD is set -- the container will fail to authenticate to the database.\r\n'
+        )
+        _creds_warn_sh = (
+            f'if [ ! -f "{_env_file_rel}" ] && [ -z "$JDX_DB_USER" ]; then echo "⚠ Neither {_env_file_rel} nor JDX_DB_USER is set -- the container will fail to authenticate to the database."; fi\n'
+            f'if [ ! -f "{_env_file_rel}" ] && [ -z "$JDX_DB_PASSWORD" ]; then echo "⚠ Neither {_env_file_rel} nor JDX_DB_PASSWORD is set -- the container will fail to authenticate to the database."; fi\n'
+        )
+
     # ── run_docker_app.cmd / run_docker_app.sh ────────────────────────────────
     (root / GILHARI_DIR / "run_docker_app.cmd").write_text(
         f"@echo off\r\n"
+        f"{_selflocate_cmd}"
         f"setlocal enabledelayedexpansion\r\n"
         f"REM Check if service is already running and healthy\r\n"
         f"curl.exe -fs --max-time 3 http://localhost:{host_port}/gilhari/v1/health/check >nul 2>&1\r\n"
@@ -2434,9 +2559,10 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         f"    echo REST base URL: http://localhost:{host_port}/gilhari/v1/\r\n"
         f"    exit /b 0\r\n"
         f")\r\n"
+        f"{_creds_warn_cmd}"
         f"REM Remove any existing container with this name (stopped or running)\r\n"
         f"docker rm -f {image_name} >nul 2>&1\r\n"
-        f"docker run --platform {cfg['docker_platform']}{_identity_flags_cmd} -d --name {image_name}{_mount_flag_cmd} -p {host_port}:{service_port} {image_name}:{image_tag}\r\n"
+        f"docker run --platform {cfg['docker_platform']}{_identity_flags_cmd}{_creds_flags_cmd} -d --name {image_name}{_mount_flag_cmd} -p {host_port}:{service_port} {image_name}:{image_tag}\r\n"
         f"\r\n"
         f"echo Waiting for Gilhari microservice to start...\r\n"
         f"echo (This may take up to 3 minutes for cloud or remote databases)\r\n"
@@ -2470,15 +2596,17 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
 
     write_sh(root / GILHARI_DIR / "run_docker_app.sh",
         f"#!/bin/bash\n"
+        f"{_selflocate_sh}"
         f"# Check if service is already running and healthy\n"
         f"if curl -fs --max-time 3 \"http://localhost:{host_port}/gilhari/v1/health/check\" > /dev/null 2>&1; then\n"
         f"    echo \"✔ Gilhari microservice is already running and healthy.\"\n"
         f"    echo \"  REST base URL: http://localhost:{host_port}/gilhari/v1/\"\n"
         f"    exit 0\n"
         f"fi\n"
+        f"{_creds_warn_sh}"
         f"# Remove any existing container with this name (stopped or running)\n"
         f"docker rm -f {image_name} > /dev/null 2>&1 || true\n"
-        f"docker run --platform {cfg['docker_platform']}{_identity_flags_sh}{_add_host_flag} -d --name {image_name}{_mount_flag_sh} -p {host_port}:{service_port} {image_name}:{image_tag}\n"
+        f"docker run --platform {cfg['docker_platform']}{_identity_flags_sh}{_add_host_flag}{_creds_flags_sh} -d --name {image_name}{_mount_flag_sh} -p {host_port}:{service_port} {image_name}:{image_tag}\n"
         f"\n"
         f"echo \"Waiting for Gilhari microservice to start...\"\n"
         f"echo \"(This may take up to 3 minutes for cloud or remote databases)\"\n"
@@ -2646,7 +2774,7 @@ def build_arg_parser():
                                               "--hostname' (default: the image name). For CData's Excel "
                                               "driver, confirmed necessary (2026-07-14) AND must be set to "
                                               "your actual host machine's real hostname (Windows: run "
-                                              "`hostname` or check %COMPUTERNAME%) — not an arbitrary fixed "
+                                              "`hostname` or check %%COMPUTERNAME%%) — not an arbitrary fixed "
                                               "value. Required together with --docker-mac-address below.")
     p.add_argument("--docker-mac-address", help="Fixed MAC address to assign the container via 'docker run "
                                                  "--mac-address' (e.g. 02:42:ac:11:00:02). Without a fixed "
@@ -3618,6 +3746,16 @@ def write_curl_scripts(cfg: dict, class_names: list):
 
     # ── Project .gitignore ────────────────────────────────────────────────
     gitignore_path = root / ".gitignore"
+    # Recomputed here rather than reused from write_gilhari_artifacts -- this
+    # is a separate function, those locals aren't in scope.
+    _creds_required = cfg.get("credentials_via_env", False) and cfg.get("url_db_type") != "SQLITE"
+    _env_file_rel = f"{GILHARI_DIR}/orm_skyway.env"
+    _env_file_gitignore_block = (
+        "\n"
+        "# Real DB credentials for the Gilhari Docker container (JDX_DB_USER /\n"
+        "# JDX_DB_PASSWORD), read via `docker run --env-file` -- never commit\n"
+        f"{_env_file_rel}\n"
+    ) if _creds_required else ""
     if not gitignore_path.exists():
         driver_jar_name = Path(cfg["jdbc_driver_jar"]).name
         config_name     = cfg["reverse_eng_template_config"]
@@ -3641,6 +3779,7 @@ def write_curl_scripts(cfg: dict, class_names: list):
             "\n"
             "# Sensitive config (if you store credentials here)\n"
             "orm_skyway_config.json\n"
+            f"{_env_file_gitignore_block}"
             "\n"
             "# softwaretree/orm_skyway Docker image: one-time license\n"
             "# acceptance marker -- local/machine-specific, not for VCS\n"
@@ -3654,7 +3793,15 @@ def write_curl_scripts(cfg: dict, class_names: list):
         gitignore_path.write_text(gitignore_content, encoding="utf-8")
         info("Project .gitignore written.")
     else:
-        verbose_info("Project .gitignore already exists — not overwritten.")
+        # Existing .gitignore predates E1, or predates this project entirely --
+        # in either case, gilhari/orm_skyway.env must still be excluded once it
+        # starts existing, or real credentials risk landing in version control.
+        if _creds_required and _env_file_rel not in gitignore_path.read_text(encoding="utf-8"):
+            with gitignore_path.open("a", encoding="utf-8") as _gi:
+                _gi.write(_env_file_gitignore_block)
+            info(f"Added {_env_file_rel} to existing .gitignore (contains real DB credentials).")
+        else:
+            verbose_info("Project .gitignore already exists — not overwritten.")
 
     # ── Project .gitattributes ───────────────────────────────────────────
     # Ensures correct line endings when generated files are committed to Git
@@ -4085,6 +4232,7 @@ def main():
             "docker_image_tag":  "docker_image_tag",
             "gilhari_host_port": "gilhari_host_port",
             "embed_db_file_in_microservice": "embed_db_file_in_microservice",
+            "credentials_via_env": "credentials_via_env",
             "docker_platform":   "docker_platform",
             "docker_mac_address": "docker_mac_address",
             "docker_hostname":   "docker_hostname",
