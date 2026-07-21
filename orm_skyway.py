@@ -69,7 +69,7 @@ import textwrap
 from pathlib import Path
 
 __version__ = "1.0.26"
-# Regenerated: 2026-07-20 1:50 AM PDT
+# Regenerated: 2026-07-20 7:15 PM PDT
 # This timestamp updates on every regeneration of this file, independent of
 # __version__ above -- __version__ is bumped manually, only once a change has
 # been verified, so multiple regenerations can share the same version number
@@ -834,31 +834,24 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
     )
     # E1: credentials_via_env is an opt-in feature flag, config-file only (no
     # CLI flag, same as embed_db_file_in_microservice above). Default is False
-    # (today's pre-E1 behavior, unchanged) whenever unset -- silently in --yes
-    # mode, via an interactive prompt otherwise. Originally this required an
-    # explicit true/false in --yes mode, erroring out otherwise; reverted
-    # 2026-07-20 because E1 has no documentation yet, so every existing
-    # tester's --yes config (all of which predate this flag) would hit a hard
-    # error over a feature they have no way to know about. Revisit requiring
-    # explicit --yes opt-in once E1 is documented and testers have had a
-    # chance to adopt it deliberately.
+    # (today's pre-E1 behavior, unchanged) whenever unset -- silently, in both
+    # --yes and interactive mode. No prompt of any kind: E1 has no
+    # documentation yet, so it should not surface to anyone who hasn't
+    # deliberately opted in by hand-editing their config file. An earlier
+    # version of this (2026-07-20) silently defaulted only in --yes mode but
+    # still prompted interactively -- that leaked exactly the "don't talk
+    # about E1 yet" boundary this is meant to respect, since it surfaced the
+    # feature to every interactive Phase 3 run regardless of --yes. Revisit
+    # adding a prompt (or requiring an explicit --yes decision) once E1 is
+    # documented and ready to be announced.
     # getattr returns None only when the key was never present in the config
     # file at all (the key_map merge in main() only setattr's when the JSON
     # key exists, so an explicit `"credentials_via_env": false` is preserved
     # and distinguishable from "never set").
     _credentials_via_env_arg = getattr(args, "credentials_via_env", None)
     if _credentials_via_env_arg is None:
-        if _YES:
-            cfg["credentials_via_env"] = False
-            verbose_info("credentials_via_env not set in config; defaulting to false (pre-E1 behavior).")
-        else:
-            cfg["credentials_via_env"] = yn_confirm(
-                "Enable credential hardening (E1) -- real DB credentials never baked into the "
-                "Docker image, supplied instead via gilhari/orm_skyway.env / JDX_DB_USER / "
-                "JDX_DB_PASSWORD at `docker run` time? Requires a JDX build with env-var "
-                "credential override.",
-                default=False
-            )
+        cfg["credentials_via_env"] = False
+        verbose_info("credentials_via_env not set in config; defaulting to false (pre-E1 behavior).")
     else:
         cfg["credentials_via_env"] = bool(_credentials_via_env_arg)
     cfg["gilhari_host_port"] = int(
