@@ -1,6 +1,6 @@
 # Configuration File Reference
 
-_Last updated: 2026-07-08 PDT_
+_Last updated: 2026-07-22 12:05 AM PDT_
 
 ← [README](../README.md)
 
@@ -59,7 +59,7 @@ The `tables` field controls which database tables are included in the object mod
 |---|---|
 | `jdbc_url` | JDBC connection URL. The DB type (MySQL, PostgreSQL, SQLite, etc.) is inferred automatically from this URL. |
 | `db_schema` | Schema or catalog to inspect. The meaning varies by database — see the per-DB examples below. For PostgreSQL, if left blank the script defaults to the `public` schema. |
-| `db_type` | Overrides the DB type inferred from `jdbc_url`. Leave blank for auto-detection (recommended). Valid values: `MYSQL`, `POSTGRES`, `ORACLE`, `MSSQL`, `SQLITE`, `DB2` *(experimental)*, `SNOWFLAKE` *(experimental)*, `MARIADB` *(experimental)*, `DATABRICKS` *(experimental)*, `SPANNER` *(experimental)*, `COCKROACHDB` *(experimental)*, `YUGABYTE` *(experimental)*. Useful when the JDBC URL format is non-standard and auto-detection fails. JDX also supports additional tokens (e.g. `ORACLE9`, `GENERIC`) that can be passed through verbatim. |
+| `db_type` | Overrides the DB type inferred from `jdbc_url`. Leave blank for auto-detection (recommended). Valid values: `MYSQL`, `POSTGRES`, `ORACLE`, `MSSQL`, `SQLITE`, `DB2` *(experimental)*, `SNOWFLAKE` *(experimental)*, `MARIADB` *(experimental)*, `DATABRICKS` *(experimental)*, `SPANNER` *(experimental)*, `COCKROACHDB` *(experimental)*, `YUGABYTE` *(experimental)*, `GENERIC` (any other JDBC-compliant data source — see [GENERIC mode](#generic-mode--connecting-to-any-jdbc-data-source-requires-jdx-522) below). Useful when the JDBC URL format is non-standard and auto-detection fails. JDX also supports additional tokens (e.g. `ORACLE9`) that can be passed through verbatim. |
 | `db_user` | Database username |
 | `db_password` | Database password |
 | `jdbc_driver_jar` | Full path to the JDBC driver JAR. Used both to connect in Phase 1 and copied into `config/` for Docker packaging in Phase 3. |
@@ -281,6 +281,43 @@ Both are PostgreSQL-compatible. Use the standard PostgreSQL JDBC driver and foll
 "jdbc_driver_class": "org.postgresql.Driver"
 ```
 
+**GENERIC mode — connecting to any JDBC data source** *(requires JDX 5.22+)*
+
+If your database isn't one of the types above, `db_type: "GENERIC"` lets you connect to **any** JDBC-compliant data source — including ones ORM_Skyway has never heard of — without any code changes. When `JDX_DBTYPE=GENERIC` is set, JDX passes every non-JDX-internal property straight through to the JDBC driver, with no whitelist filtering. JDX's own internal keys (`JDX_DBTYPE`, `DEBUG_LEVEL`, `JDX_ORMFile`, etc.) are automatically excluded from what gets forwarded, so they never leak into the driver's connection properties.
+
+```json
+"db_type":           "GENERIC",
+"jdbc_url":          "jdbc:newdb://localhost:1234/mydb;apiKey=abc123;timeout=30",
+"db_user":           "myuser",
+"db_password":       "mypass",
+"jdbc_driver_jar":   "config/newdb-jdbc.jar",
+"jdbc_driver_class": "com.newdb.jdbc.Driver"
+```
+
+This generates a `JDX_DATABASE` line like:
+
+```
+JDX_DATABASE JDX:jdbc:newdb://localhost:1234/mydb;apiKey=abc123;timeout=30;USER=myuser;PASSWORD=mypass;JDX_DBTYPE=GENERIC;DEBUG_LEVEL=0
+```
+
+`apiKey=abc123` and `timeout=30` are passed straight through to the driver — nothing in ORM_Skyway or JDX needs to know what they mean.
+
+Any driver-specific properties your database needs can go directly in `jdbc_url`, in either format:
+
+| Format | Example | How properties reach the driver |
+|---|---|---|
+| Semicolon-separated | `jdbc:db://host/db;key=val` | Parsed into a `Properties` object, passed to the driver explicitly |
+| Query string | `jdbc:db://host/db?key=val&key2=val2` | Stay embedded in the URL string; the driver parses them itself |
+
+Both work — use whichever format your specific JDBC driver expects.
+
+**Limitations of GENERIC mode:**
+- DDL generation uses generic SQL types, which may not match your database's actual type system — you may need to manually adjust types in the generated `.jdx` file.
+- If using JDX to generate `CREATE TABLE` statements for a GENERIC data source, auto-increment columns won't have a database-specific keyword appended automatically. You may need to manually edit the generated `.jdx.create` SQL script to add the correct auto-increment syntax for your database.
+- Binary columns map to `LONG VARBINARY` by default — override this in the `.jdx` file if your database needs something more specific.
+
+GENERIC mode is the right fallback whenever `db_type` is left unset and the JDBC URL doesn't match any of the known patterns above — see the [Field reference](#field-reference) `db_type` entry.
+
 ### SDK location (Phase 1)
 
 | Key | Description |
@@ -330,9 +367,11 @@ Ready-to-use sample configuration files are provided in the `docs/samples/` dire
 | `orm_skyway_config_sqlite.json` | SQLite |
 | `orm_skyway_config_db2.json` | IBM DB2 *(experimental)* |
 | `orm_skyway_config_snowflake.json` | Snowflake *(experimental)* |
+| `orm_skyway_config_mac_snowflake.json` | Snowflake, macOS-style paths *(experimental)* |
 | `orm_skyway_config_mariadb.json` | MariaDB *(experimental)* |
 | `orm_skyway_config_databricks.json` | Databricks *(experimental)* |
 | `orm_skyway_config_spanner.json` | Google Cloud Spanner *(experimental)* |
+| `orm_skyway_config_generic.json` | Any other JDBC-compliant data source — [GENERIC mode](#generic-mode--connecting-to-any-jdbc-data-source-requires-jdx-522) |
 
 Each file includes comments explaining the key settings for that database type.
 

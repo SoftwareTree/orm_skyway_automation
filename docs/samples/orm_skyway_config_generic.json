@@ -1,0 +1,54 @@
+{
+    "_comments": [
+        "Sample configuration for GENERIC mode -- connecting to any JDBC-compliant data source",
+        "not otherwise recognized by orm_skyway (requires JDX 5.22+).",
+        "",
+        "In GENERIC mode, JDX passes every non-JDX-internal property straight through to your",
+        "JDBC driver, with no whitelist filtering. JDX's own internal keys (JDX_DBTYPE,",
+        "DEBUG_LEVEL, JDX_ORMFile, etc.) are automatically excluded from what gets forwarded.",
+        "",
+        "Put any driver-specific connection properties your database needs directly in jdbc_url,",
+        "in either format -- both work, use whichever your specific driver expects:",
+        "  Semicolon-separated: jdbc:db://host/db;key=val;key2=val2",
+        "  Query string:        jdbc:db://host/db?key=val&key2=val2",
+        "",
+        "The example jdbc_url below shows apiKey and timeout as placeholder driver-specific",
+        "properties -- replace with whatever your actual driver requires (or remove entirely",
+        "if your driver needs none beyond user/password).",
+        "",
+        "Limitations of GENERIC mode:",
+        "  - DDL generation uses generic SQL types, which may not match your database's actual",
+        "    type system -- you may need to manually adjust types in the generated .jdx file.",
+        "  - If generating CREATE TABLE statements, auto-increment columns won't have a",
+        "    database-specific keyword appended automatically -- edit the generated .jdx.create",
+        "    SQL script by hand to add the correct syntax for your database.",
+        "  - Binary columns map to LONG VARBINARY by default -- override in the .jdx file if",
+        "    your database needs something more specific.",
+        "",
+        "Copy to your project root, rename to orm_skyway_config.json, and edit for your database.",
+        "Run: python orm_skyway.py -f orm_skyway_config.json --phase 1+3"
+    ],
+
+    "jdbc_url":          "jdbc:newdb://localhost:1234/mydb;apiKey=abc123;timeout=30",
+    "db_schema":         "",
+    "db_type":           "GENERIC",
+    "db_user":           "myuser",
+    "db_password":       "",
+
+    "jdbc_driver_jar":   "C:/drivers/newdb-jdbc.jar",
+    "jdbc_driver_class": "com.newdb.jdbc.Driver",
+
+    "jx_home":           "C:/SoftwareTree/JDX5.x",
+    "object_model_package": "com.example.json.model",
+    "reverse_eng_template_config": "reverse_eng_template",
+    "tables":            "",
+    "model_overview":    "A custom JDBC data source object model",
+
+    "docker_image_name": "my-generic-gilhari-service",
+    "docker_image_tag":  "1.0",
+    "gilhari_host_port": 80,
+
+    "skip_reverse_eng":  false,
+    "skip_compile":      false,
+    "verbose":           false
+}
