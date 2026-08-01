@@ -68,8 +68,8 @@ import sys
 import textwrap
 from pathlib import Path
 
-__version__ = "1.0.26"
-# Regenerated: 2026-07-20 7:15 PM PDT
+__version__ = "1.0.27"
+# Regenerated: 2026-07-31 6:48 PM PDT
 # This timestamp updates on every regeneration of this file, independent of
 # __version__ above -- __version__ is bumped manually, only once a change has
 # been verified, so multiple regenerations can share the same version number
@@ -3303,7 +3303,7 @@ Add the following to `claude_desktop_config.json`:
 Claude Desktop starts the ORMCP server automatically — no separate terminal needed.
 
 > **Windows note:** If `ormcp-server` is not found, use the full path instead:
-> `"command": "C:\\Users\\<YourUsername>\\AppData\\Roaming\\Python\\Python313\\Scripts\\ormcp-server.exe"`
+> `"command": "C:\\\\Users\\\\<YourUsername>\\\\AppData\\\\Roaming\\\\Python\\\\Python313\\\\Scripts\\\\ormcp-server.exe"`
 > Run `where ormcp-server` in a command prompt to find the exact path.
 
 ### Other MCP clients (Gemini CLI, OpenAI GPTs, etc.)
@@ -3334,7 +3334,7 @@ client-specific configuration (Gemini CLI, OpenAI GPTs, HTTP mode).
 
 > **HTTP mode:** ORMCP can also run as an HTTP server, making it accessible
 > from other machines, mobile devices, and any HTTP-capable client — not just
-> local AI desktop apps. Start with `ormcp-server --http` and point clients
+> local AI desktop apps. Start with `ormcp-server --transport http` and point clients
 > at `http://<host>:<port>/`. See the ORMCP documentation for details.
 
 ---
@@ -3358,7 +3358,7 @@ Once connected, try asking your AI agent:
 | `GILHARI_NAME` | `{image_name}` | Container name for auto-start |
 | `GILHARI_IMAGE` | `{image_name}:{image_tag}` | Docker image for auto-start |
 | `GILHARI_PORT` | `{host_port}` | Port for auto-start |
-| `READONLY_MODE` | `True` (default) | Set `False` to allow write operations (create, update, delete) |
+| `READONLY_MODE` | `True` (set explicitly below — ormcp-server's own default if unset is currently `False`) | Set `False` to allow write operations (create, update, delete) |
 | `GILHARI_TIMEOUT` | `30` (default) | API timeout in seconds |
 | `LOG_LEVEL` | `INFO` (default) | `DEBUG`, `INFO`, `WARNING`, or `ERROR` |
 

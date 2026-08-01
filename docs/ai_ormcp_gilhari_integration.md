@@ -1,6 +1,6 @@
 # Phase 5 — ORMCP / AI Agent Integration
 
-_Last updated: 2026-07-19 1:10 AM PDT_
+_Last updated: 2026-07-31 6:48 PM PDT_
 
 **Goal:** Connect your running Gilhari microservice to an AI agent so it can query and interact with your business data through natural language.
 
@@ -100,7 +100,7 @@ ORMCP works with any MCP-compatible client including Gemini CLI, OpenAI GPTs (in
 | `GILHARI_NAME` | Container name (used for auto-start) | — |
 | `GILHARI_IMAGE` | Docker image for auto-start | — |
 | `GILHARI_PORT` | Port for auto-start | — |
-| `READONLY_MODE` | Set `False` to allow write operations (create, update, delete). Defaults to `True` — read-only is the safe default for AI agents. | `True` |
+| `READONLY_MODE` | Set `True` to restrict the agent to query-only access (recommended for AI agents — the example configuration above sets this explicitly). Set `False`, or leave unset, to allow write operations (create, update, delete). | `False` |
 | `GILHARI_TIMEOUT` | API timeout in seconds | `30` |
 | `LOG_LEVEL` | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR` | `INFO` |
 
