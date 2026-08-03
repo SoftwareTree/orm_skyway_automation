@@ -68,8 +68,8 @@ import sys
 import textwrap
 from pathlib import Path
 
-__version__ = "1.0.27"
-# Regenerated: 2026-07-31 6:48 PM PDT
+__version__ = "1.0.28"
+# Regenerated: 2026-08-03 1:46 AM PDT
 # This timestamp updates on every regeneration of this file, independent of
 # __version__ above -- __version__ is bumped manually, only once a change has
 # been verified, so multiple regenerations can share the same version number
@@ -351,6 +351,35 @@ def load_config_file(path: str) -> dict:
 # ==============================================================================
 # 2.  COLLECT INPUTS
 # ==============================================================================
+
+def _java_cmd_prefix(cfg: dict) -> list:
+    """['java', ...] prefix, with any DB-specific JVM system-property flags
+    needed injected right after 'java' (before -cp / anything else). Callers
+    append their own -cp/class/args after this.
+
+    Currently: Oracle needs -Doracle.jdbc.useFetchSizeWithLongColumn=true for
+    ANY JDBC operation that may touch Oracle's data dictionary (e.g. LONG
+    columns like DATA_DEFAULT, read when introspecting identity/defaulted
+    columns) — without it, both reverse-engineering and Gilhari runtime hit
+    ORA-17027 "Stream has already been closed". Confirmed via regression
+    testing against Oracle 26ai (2026-07-15), needed in BOTH places, so this
+    helper is used at every java invocation (table listing, JDXTestConnection
+    pre-create, JDXMetadata -metaForceCreate, and the main reverse-engineer
+    call) rather than just the main one, since any of them could hit the
+    same data-dictionary path. Further confirmed (2026-08-03,
+    ORACLE_COLUMN_TYPES_REPORT re-run against JDX 5.23) that this is also a
+    hard requirement for the getObjectById runtime path specifically — a
+    populated LONG column makes getObjectById fail with ORA-17027 without
+    this flag, even when whole-table/filtered queries and POST/PUT succeed
+    fine without it. So this is not a Phase-1-only convenience; it is a
+    runtime correctness requirement for Oracle whenever a LONG column may
+    be populated.
+    """
+    flags = []
+    if cfg.get("url_db_type") == "ORACLE":
+        flags.append("-Doracle.jdbc.useFetchSizeWithLongColumn=true")
+    return ["java"] + flags
+
 
 def collect_inputs(args, phase: str = "1+3") -> dict:
     """Return a config dict, filling gaps with interactive prompts.
@@ -691,6 +720,22 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
     # overridden below for *this process's own* in-container operations.
     cfg["host_jdbc_driver_jar"] = cfg["jdbc_driver_jar"]
 
+    # Oracle: the Gilhari base image runs JDK 8. ojdbc11 (compiled for JDK 11+)
+    # loads its OracleDriver class fine under javac/reflection, but
+    # DriverManager silently never registers it under JDK 8 — reverse-
+    # engineering then fails with a generic "No suitable driver found" that
+    # doesn't point at the actual cause. ojdbc8 (same Oracle DB version,
+    # JDK-8-compiled) works correctly. Confirmed via regression testing
+    # against Oracle 26ai (2026-07-15). This is a filename-based heuristic,
+    # not a real compatibility check — flag, don't block, since the filename
+    # convention isn't guaranteed.
+    if cfg.get("url_db_type") == "ORACLE" and "ojdbc11" in Path(cfg["jdbc_driver_jar"]).name.lower():
+        warn(f"jdbc_driver_jar looks like an ojdbc11 driver ({Path(cfg['jdbc_driver_jar']).name}) — "
+             "the Gilhari base image runs JDK 8, and ojdbc11's OracleDriver class won't load there "
+             "(DriverManager silently never registers it, producing a generic 'No suitable driver "
+             "found' error). Use the matching ojdbc8 driver instead (same Oracle DB version, "
+             "JDK-8-compiled) if reverse-engineering fails to connect.")
+
     # FA1: running inside the softwaretree/orm_skyway container. A driver-jar
     # path that's already reachable here (e.g. a relative path under the
     # mounted /project directory, such as ./config/<driver>.jar — the
@@ -982,7 +1027,7 @@ def list_tables_via_java(cfg: dict) -> list:
         # correctly per DB (MySQL uses catalog, Postgres/Oracle use schemaPattern).
         # Pass effective_schema as arg 4 — resolved in collect_inputs; for Postgres
         # this may be extracted from currentSchema= in the URL when db_schema is blank.
-        cmd = ["java", "-cp", cp, "ListTablesHelper",
+        cmd = _java_cmd_prefix(cfg) + ["-cp", cp, "ListTablesHelper",
                cfg["jdbc_url"], cfg["db_user"], cfg["db_password"],
                cfg.get("url_db_type", "")]
         if cfg.get("effective_schema"):
@@ -1080,7 +1125,7 @@ def ensure_jdxtestconnection(cfg: dict):
 
         # Use effective_jdbc_url so Postgres currentSchema= is honoured
         _url = cfg.get("effective_jdbc_url") or cfg["jdbc_url"]
-        cmd = ["java", "-cp", cp, "CreateTestConnectionHelper",
+        cmd = _java_cmd_prefix(cfg) + ["-cp", cp, "CreateTestConnectionHelper",
                _url, cfg["db_user"], cfg["db_password"],
                cfg.get("url_db_type", "")]
         ret = subprocess.run(cmd, capture_output=True, text=True)
@@ -1166,8 +1211,7 @@ def ensure_jdxmetadata_via_jdxschema(cfg: dict, jdx_path: Path, all_tables: list
         ".",
     )
 
-    cmd = [
-        "java",
+    cmd = _java_cmd_prefix(cfg) + [
         f"-DJX_HOME={jx_home}",
         "-cp", cp,
         "com.softwaretree.jdxtools.JDXSchema",
@@ -1680,8 +1724,7 @@ def run_reverse_engineer(cfg: dict, config_path: Path):
         ".",
     )
 
-    cmd = [
-        "java",
+    cmd = _java_cmd_prefix(cfg) + [
         f"-DJX_HOME={jx_home}",
         "-cp", cp,
         "com.softwaretree.jdxtools.JDXSchema",
@@ -2477,6 +2520,16 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
     _identity_flags_cmd = f' --hostname {_hostname_value}'
     if cfg.get("docker_mac_address"):
         _identity_flags_cmd += f' --mac-address {cfg["docker_mac_address"]}'
+    # Oracle: any JDBC operation touching Oracle's data dictionary (e.g. LONG
+    # columns) hits ORA-17027 "Stream has already been closed" without this
+    # flag — needed at Gilhari runtime here, same as at reverse-engineering
+    # time (see _java_cmd_prefix). Passed via _JAVA_OPTIONS so it applies to
+    # the service's JVM without touching the base image's Dockerfile/
+    # ENTRYPOINT. Confirmed necessary specifically for the getObjectById path
+    # (ORACLE_COLUMN_TYPES_REPORT re-run against JDX 5.23, 2026-08-03) even
+    # when whole-table/filtered queries and POST/PUT succeed without it.
+    if cfg.get("url_db_type") == "ORACLE":
+        _identity_flags_cmd += ' -e "_JAVA_OPTIONS=-Doracle.jdbc.useFetchSizeWithLongColumn=true"'
 
     # E1: DB credentials are never baked into the image (see create_docker_jdx)
     # -- opt-in via credentials_via_env. Real values are supplied at
@@ -2586,6 +2639,8 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
     _identity_flags_sh = f' --hostname {_hostname_value}'
     if cfg.get("docker_mac_address"):
         _identity_flags_sh += f' --mac-address {cfg["docker_mac_address"]}'
+    if cfg.get("url_db_type") == "ORACLE":
+        _identity_flags_sh += ' -e "_JAVA_OPTIONS=-Doracle.jdbc.useFetchSizeWithLongColumn=true"'
 
     write_sh(root / GILHARI_DIR / "run_docker_app.sh",
         f"#!/bin/bash\n"
@@ -2960,7 +3015,7 @@ def ensure_jdxmetadata_table_excel(cfg: dict):
         # Use effective_jdbc_url so any schema-qualification is honoured,
         # consistent with ensure_jdxtestconnection.
         _url = cfg.get("effective_jdbc_url") or cfg["jdbc_url"]
-        cmd = ["java", "-cp", cp, "CreateJdxMetadataHelper",
+        cmd = _java_cmd_prefix(cfg) + ["-cp", cp, "CreateJdxMetadataHelper",
                _url, cfg["db_user"], cfg["db_password"]]
         ret = subprocess.run(cmd, capture_output=True, text=True)
         if ret.returncode != 0:
