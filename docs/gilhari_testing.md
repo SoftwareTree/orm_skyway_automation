@@ -1,6 +1,6 @@
 # Phase 4 — Run and Test (Manual, Optional but Recommended)
 
-_Last updated: 2026-07-19 1:10 AM PDT_
+_Last updated: 2026-08-03 5:32 PM PDT_
 
 **Goal:** Start the Gilhari microservice and verify that it is serving your data correctly before connecting an AI agent.
 
@@ -82,6 +82,11 @@ curl -s "http://localhost:80/gilhari/v1/Employee?deep=false&maxObjects=5" | pyth
 curl -s "http://localhost:80/gilhari/v1/Employee?filter=dept='Engineering'" | python -m json.tool
 ```
 
+**Look up by primary key via `getObjectById`:** this is a genuinely distinct endpoint from the filtered query above, not just a shorthand for it — it goes through a different internal code path (a cached, reusable prepared statement, versus a fresh statement per filtered query). If you're specifically testing primary-key lookups, exercise this endpoint directly rather than assuming a filtered query on the primary key column is equivalent:
+```bat
+curl -s "http://localhost:80/gilhari/v1/Employee/getObjectById?filter=empId=1" | python -m json.tool
+```
+
 ---
 
 ## Creating, updating, and deleting
@@ -122,10 +127,19 @@ Omit `filter` to update every object of the class. Multiple attributes can be se
 
 `PATCH` returns the number of objects updated (e.g. `1`), not the updated object(s) themselves — a filter matching no objects returns `0`.
 
-**Delete by filter:**
+**Delete a specific object by entity:**
+```bat
+curl -s -X DELETE http://localhost:80/gilhari/v1/Employee/deleteEntity -H "Content-Type: application/json" -d "{\"entity\": {\"empId\": 1}}"
+```
+`entity` accepts an array here too, the same way `PUT`'s `updateEntity` does, for deleting multiple specific objects by their primary keys in one call. Returns a plain-text confirmation message (e.g. `Employee entity (entities) deleted; result=null`), the same shape as `PUT`'s response.
+
+**Bulk-delete objects matching a filter (`delete2`):**
+
+This differs from `deleteEntity` above the same way `PATCH`/`update2` differs from `PUT`/`updateEntity`: you don't need to know which records exist or their keys ahead of time — every object matching the filter is deleted in one call.
 ```bat
 curl -s -X DELETE "http://localhost:80/gilhari/v1/Employee?filter=empId=1"
 ```
+Omit `filter` to delete every object of the class. Returns the number of objects deleted (e.g. `1`), the same shape as `PATCH`'s response — not the deleted object(s) themselves.
 
 Piping through `python -m json.tool` formats JSON responses for readability and works on Windows, macOS, and Linux without any additional tools.
 

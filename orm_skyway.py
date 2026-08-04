@@ -68,8 +68,8 @@ import sys
 import textwrap
 from pathlib import Path
 
-__version__ = "1.0.28"
-# Regenerated: 2026-08-03 1:46 AM PDT
+__version__ = "1.0.29"
+# Regenerated: 2026-08-03 5:48 PM PDT
 # This timestamp updates on every regeneration of this file, independent of
 # __version__ above -- __version__ is bumped manually, only once a change has
 # been verified, so multiple regenerations can share the same version number
@@ -934,6 +934,24 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
         warn("  --docker-mac-address <your machine's MAC>      (Windows: run `getmac /v`)")
         warn("...or re-run Phase 3 after setting docker_hostname/docker_mac_address in your config file.")
 
+    # JDX's own DEBUG_LEVEL, written into both the Phase 1 .jdx and Phase 3
+    # gilhari_service.config. Default of 5 preserves prior behavior exactly
+    # (this was hardcoded everywhere before). Think of it as DEPTH, not
+    # severity: a LOW number means a deep look, right down in the weeds; a
+    # HIGH number gives a high-level, cursory view with most detail hidden.
+    # At <=3, JDX/Gilhari logs every SQL statement it executes at runtime
+    # (including bound literal values — avoid <=3 where that log could be
+    # exposed and the data is sensitive) — the main reason to use this
+    # flag. That threshold also surfaces a couple of otherwise-silent
+    # warnings (e.g. space-in-column-name exclusion at <=3, binary-column
+    # exclusion at <=1), permanently invisible at the default of 5.
+    _jdx_debug_level = getattr(args, "jdx_debug_level", None)
+    cfg["jdx_debug_level"] = 5 if _jdx_debug_level is None else int(_jdx_debug_level)
+    if cfg["jdx_debug_level"] != 5:
+        verbose_info(f"JDX DEBUG_LEVEL set to {cfg['jdx_debug_level']} (default is 5, a high-level cursory view — "
+                     "lower numbers go deeper, showing more detail).")
+
+
     # Project root is always the current working directory
     if getattr(args, "project_dir", None):
         cfg["project_root"] = Path(args.project_dir).resolve()
@@ -1482,7 +1500,7 @@ def generate_template_config(cfg: dict, table_class_map: dict) -> Path:
     jdx_db_line = (
         f"JDX_DATABASE JDX:{_jdx_url};"
         f"USER={jdx_user};PASSWORD={jdx_password};"
-        f"JDX_DBTYPE={cfg['db_type']};DEBUG_LEVEL=5"
+        f"JDX_DBTYPE={cfg['db_type']};DEBUG_LEVEL={cfg['jdx_debug_level']}"
     )
 
     # JDXSchema writes .java files to JDX_OUTPUT_DIRECTORY (relative to cwd)
@@ -2350,7 +2368,7 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         "gilhari_microservice_name":       image_name,
         "jdx_orm_spec_file":               docker_jdx_rel,
         "jdbc_driver_path":                container_jar_path,
-        "jdx_debug_level":                 5,
+        "jdx_debug_level":                 cfg["jdx_debug_level"],
         "jdx_force_create_schema":         "false",
         "jdx_persistent_classes_location": "./bin",
         "classnames_map_file":             classnames_map_file,
@@ -2811,6 +2829,22 @@ def build_arg_parser():
     p.add_argument("--skip-reverse-eng",  action="store_true", help="Skip running JDXReverseEngineer")
     p.add_argument("--skip-compile",      action="store_true", help="Skip compiling generated classes")
     p.add_argument("--verbose",           action="store_true", help="Print detailed progress (commands, file writes, class mappings)")
+    p.add_argument("--jdx-debug-level", "--jdx_debug_level", type=int, help="JDX's own DEBUG_LEVEL, written into both the generated "
+                                                "reverse-engineering .jdx (Phase 1) and gilhari_service.config "
+                                                "(Phase 3) as jdx_debug_level. Think of it as DEPTH, not severity: "
+                                                "a LOW number means a deep look, right down in the weeds — every "
+                                                "SQL statement, every internal warning. A HIGH number gives a "
+                                                "high-level, cursory view, with most detail hidden. Default: 5 "
+                                                "(the high-level, cursory view). At <= 3, JDX/Gilhari also "
+                                                "logs every SQL statement it executes at runtime — the main "
+                                                "reason to reach for this flag when debugging a query/insert/ "
+                                                "update issue. That same threshold also surfaces a couple of "
+                                                "otherwise-silent warnings, e.g. a column excluded from mapping "
+                                                "for having a space in its name (<= 3) or for being a binary type "
+                                                "(<= 1). At the default of 5, none of this is visible. Note: "
+                                                "runtime SQL logging includes literal bound values, so avoid <= 3 "
+                                                "in any environment where the SQL log itself might be exposed and "
+                                                "the data is sensitive.")
     p.add_argument("--yes", "-y",         action="store_true", help="Auto-accept all confirmation prompts (non-interactive / CI mode)")
     # Phase 3 settings
     p.add_argument("--docker-image-name", help="Docker image name (default: derived from config-name)")
@@ -4286,6 +4320,7 @@ def main():
             "docker_platform":   "docker_platform",
             "docker_mac_address": "docker_mac_address",
             "docker_hostname":   "docker_hostname",
+            "jdx_debug_level":   "jdx_debug_level",
             "verbose":           "verbose",
         }
         for json_key, arg_dest in key_map.items():

@@ -1,6 +1,6 @@
 # Phase 3 — Gilhari Microservice Packaging
 
-_Last updated: 2026-07-19 1:10 AM PDT_
+_Last updated: 2026-08-03 5:32 PM PDT_
 
 **Goal:** Package your object model into a self-contained Docker image that exposes a RESTful JSON API for every mapped class.
 
@@ -82,6 +82,18 @@ The script prints a summary of everything created, followed by the next steps fo
 The generated Dockerfile and build scripts use `--platform linux/amd64`. On Apple Silicon Macs (M1/M2/M3) this causes a platform mismatch warning during `docker build` and `docker run`. The container still runs correctly via emulation (Rosetta 2), but with a small performance overhead.
 
 A multi-architecture image (`linux/amd64` + `linux/arm64`) would eliminate the warning but requires `docker buildx` and a more complex build pipeline. This is not currently automated by ORM_Skyway. If you need native ARM64 performance, you can manually modify the generated `gilhari/build.sh` to use `docker buildx build --platform linux/amd64,linux/arm64` — but this requires the Gilhari base image to also support ARM64.
+
+The target platform is configurable via `--docker-platform` (or `docker_platform` in the config file), though in practice there's little reason to change it from the `linux/amd64` default today, since `softwaretree/gilhari` is single-architecture.
+
+---
+
+## Fixed hostname / MAC address for the container
+
+`docker run --hostname` is set automatically to the Docker image name by default, so the container's hostname is stable across runs. You can override this with `--docker-hostname` (or `docker_hostname` in the config file). A fixed MAC address can be set via `--docker-mac-address` (or `docker_mac_address`) — there is no default, since Docker's own randomly-assigned MAC is fine for most databases.
+
+**This matters, and is required rather than optional, for JDBC drivers with node-locked licensing** — the confirmed case is CData's Excel driver, whose license check validates the running container's hostname *and* MAC address against your actual host machine's real values, not just any fixed/consistent values. Without both set correctly, Gilhari fails at startup with a "valid license not found" error.
+
+If `orm_skyway.py` detects an Excel connection (`jdbc:excel:` in the URL) with either setting unset, it prints an explicit warning during config collection with the exact commands to find your machine's real hostname and MAC address (`hostname`/`%COMPUTERNAME%` and `getmac /v` on Windows; `hostname` and `ifconfig`/`ip link` on macOS/Linux). See [configuration.md](configuration.md) for the full Excel/CData setup notes.
 
 ---
 

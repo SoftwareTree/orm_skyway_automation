@@ -1,6 +1,6 @@
 # Command-Line Reference
 
-_Last updated: 2026-07-14 PDT_
+_Last updated: 2026-08-03 5:48 PM PDT_
 
 ← [README](../README.md)
 
@@ -21,6 +21,7 @@ CLI flags always override values in the config file. Any value not supplied via 
 | `--project-dir PATH` | Project root directory (default: current working directory). Useful for CI or Makefile invocations where you cannot `cd` first. |
 | `--phase {1,3,1+3,introspect}` | Phase(s) to run. Default: `1+3` |
 | `--verbose` | Enable detailed output: command lines, file writes, class mappings. Also settable as `"verbose": true` in the config file. |
+| `--jdx-debug-level N` (alias: `--jdx_debug_level N`, matching the config-file key spelling) | JDX's own `DEBUG_LEVEL`, written into both the Phase 1 `.jdx` and the Phase 3 `gilhari_service.config`. Think of it as **depth, not severity**: a low number means a deep look, right down in the weeds — every SQL statement, every internal warning. A high number gives a high-level, cursory view, with most detail hidden. Default: `5` (the high-level, cursory view). At `<=3`, JDX/Gilhari also logs every SQL statement it executes at runtime — the main reason to reach for this flag when debugging a query/insert/update issue. That same threshold also surfaces a couple of otherwise-silent warnings (e.g. a column excluded from mapping for having a space in its name, or for being a binary type). **Caution:** runtime SQL logging at `<=3` includes literal bound values — avoid this setting in any environment where the log itself might be exposed and the data is sensitive. Also settable as `"jdx_debug_level": N` in the config file. |
 | `--yes`, `-y` | Auto-accept all confirmation prompts (non-interactive / CI mode). Requires `--tables` (or `tables` in config) to be set — use `all` to select every table. |
 
 ---
@@ -33,9 +34,10 @@ CLI flags always override values in the config file. Any value not supplied via 
 | `--db-schema SCHEMA` | Database schema/catalog to inspect (blank = default) |
 | `--db-user USER` | Database username |
 | `--db-password PASSWORD` | Database password |
-| `--db-type TYPE` | `MYSQL` / `POSTGRES` / `ORACLE` / `MSSQL` / `SQLITE` / `SNOWFLAKE` / `COCKROACHDB` (auto-detected from URL if omitted). These are the ✅ Verified database types — see the [Supported Databases table](../README.md#supported-databases) in the README. Additional experimental types (`DB2`, `MARIADB`, `DATABRICKS`, `SPANNER`, `YUGABYTE`, and others JDX accepts verbatim) are also supported but not yet fully verified — see [configuration.md](configuration.md) for the full list. |
+| `--db-type TYPE` | `MYSQL` / `POSTGRES` / `ORACLE` / `MSSQL` / `SQLITE` / `SNOWFLAKE` / `COCKROACHDB` (auto-detected from URL if omitted). These are the ✅ Verified database types — see the [Supported Databases table](../README.md#supported-databases) in the README. Additional experimental types (`DB2`, `MARIADB`, `DATABRICKS`, `SPANNER`, `YUGABYTE`, `HANA`/`SAPHANA`, and others JDX accepts verbatim) are also supported but not yet fully verified — see [configuration.md](configuration.md) for the full list. `GENERIC` connects to any JDBC-compliant data source not otherwise recognized (requires JDX 5.22+) — see [GENERIC mode](configuration.md#generic-mode--connecting-to-any-jdbc-data-source-requires-jdx-522). `EXCEL` is auto-detected from a `jdbc:excel:` URL — see [configuration.md](configuration.md) for Excel-specific setup notes. |
 | `--jdbc-driver-class CLASS` | JDBC driver class name |
 | `--jdbc-driver-jar PATH` | Full path to the JDBC driver JAR |
+| `--jdbc-driver-lic PATH` | Path to an accompanying JDBC driver license file, if the driver needs one (e.g. CData drivers, used for Excel). Auto-detected by default as a same-stem `.lic` file next to the jar (e.g. `cdata.jdbc.excel.jar` → `cdata.jdbc.excel.lic`) and copied into `config/` for Docker packaging — only set this explicitly if your license file doesn't follow that naming convention. |
 | `--jx-home PATH` | Root directory of the Gilhari SDK installation |
 | `--object-model-package PKG` | Java package for generated model classes. Omit or leave blank for no package — files go directly into `src/` and `bin/`. |
 | `--reverse-eng-template-config NAME` | Base name for the template config file |
@@ -53,6 +55,9 @@ CLI flags always override values in the config file. Any value not supplied via 
 | `--docker-image-name NAME` | Docker image name. Must be project-specific to avoid conflicts between projects on the same machine. |
 | `--docker-image-tag TAG` | Docker image tag. Default: `1.0` |
 | `--gilhari-host-port PORT` | Host port for the Gilhari REST service. Default: `80` |
+| `--docker-platform PLATFORM` | Docker target platform, e.g. `linux/amd64` or `linux/arm64`. Default: `linux/amd64` — `softwaretree/gilhari` is currently single-architecture (amd64-only), so this rarely needs to change. On Apple Silicon Macs, the container runs via emulation with a small performance overhead (see the [Apple Silicon note](gilhari_microservice_packaging.md#apple-silicon-platform-note)). Override only if you have a genuinely multi-arch build to target. |
+| `--docker-hostname HOSTNAME` | Fixed hostname to assign the container via `docker run --hostname`. Default: the Docker image name. **Required for Excel/CData** — see [configuration.md](configuration.md) for details. Needed for any JDBC driver with node-locked licensing that validates the running container's hostname. |
+| `--docker-mac-address MAC` | Fixed MAC address to assign the container via `docker run --mac-address` (e.g. `02:42:ac:11:00:02`). No default — only passed to `docker run` if set. **Required for Excel/CData**, alongside `--docker-hostname` — see [configuration.md](configuration.md) for details, including how to find your machine's real hostname/MAC address (both must match your actual host machine, not arbitrary values, for CData's license check to succeed). |
 
 ---
 

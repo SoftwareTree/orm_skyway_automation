@@ -1,6 +1,6 @@
 # Phase 1 — Reverse Engineering
 
-_Last updated: 2026-07-19 1:10 AM PDT_
+_Last updated: 2026-08-03 5:32 PM PDT_
 
 **Goal:** Connect to your existing database, select the tables you care about, and automatically generate a JSON object model and (JDX) ORM mapping specification.
 
@@ -76,6 +76,8 @@ The script writes the template config and invokes `JDXSchema -reverseEng`, which
 - `config/<n>.config` — the template config, which includes the `JDX_METADATA_FILE` directive pointing to the appropriate per-DB metadata spec file
 
 If `src/` already contains `.java` files from a previous run, the script wipes the entire `src/` directory (and `bin/`) after prompting for confirmation, ensuring no stale files from a previous run — including files from a different package — can be compiled into the new build. If you have hand-edited any `.java` files, save copies before re-running Phase 1.
+
+> **Debugging a column that didn't show up as expected?** JDX silently excludes certain columns during reverse engineering — for example, a column whose name contains a space, or a binary-typed column (since raw bytes can't be represented in JSON). By default (`jdx_debug_level` unset, meaning `5`), the warnings explaining *why* a column was excluded are not visible. Set `--jdx-debug-level 3` (or lower) for this run to see them — see the [command-line reference](orm_skyway_command_line.md) for what else becomes visible at each level, including full runtime SQL statement logging at `<=3`.
 
 ### Step 8 — Working ORM spec
 The auto-generated `.revjdx` is copied to `.jdx` — your working ORM spec, which you can edit freely in Phase 2. The `.revjdx` is kept as an immutable record and should never be edited directly.
