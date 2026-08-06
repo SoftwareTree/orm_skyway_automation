@@ -1,6 +1,6 @@
 # Command-Line Reference
 
-_Last updated: 2026-08-03 5:48 PM PDT_
+_Last updated: 2026-08-05 5:31 PM PDT_
 
 ← [README](../README.md)
 
@@ -21,7 +21,7 @@ CLI flags always override values in the config file. Any value not supplied via 
 | `--project-dir PATH` | Project root directory (default: current working directory). Useful for CI or Makefile invocations where you cannot `cd` first. |
 | `--phase {1,3,1+3,introspect}` | Phase(s) to run. Default: `1+3` |
 | `--verbose` | Enable detailed output: command lines, file writes, class mappings. Also settable as `"verbose": true` in the config file. |
-| `--jdx-debug-level N` (alias: `--jdx_debug_level N`, matching the config-file key spelling) | JDX's own `DEBUG_LEVEL`, written into both the Phase 1 `.jdx` and the Phase 3 `gilhari_service.config`. Think of it as **depth, not severity**: a low number means a deep look, right down in the weeds — every SQL statement, every internal warning. A high number gives a high-level, cursory view, with most detail hidden. Default: `5` (the high-level, cursory view). At `<=3`, JDX/Gilhari also logs every SQL statement it executes at runtime — the main reason to reach for this flag when debugging a query/insert/update issue. That same threshold also surfaces a couple of otherwise-silent warnings (e.g. a column excluded from mapping for having a space in its name, or for being a binary type). **Caution:** runtime SQL logging at `<=3` includes literal bound values — avoid this setting in any environment where the log itself might be exposed and the data is sensitive. Also settable as `"jdx_debug_level": N` in the config file. |
+| `--jdx-debug-level N` (alias: `--jdx_debug_level N`, matching the config-file key spelling) | JDX's own `DEBUG_LEVEL`, written into both the Phase 1 `.jdx` and the Phase 3 `gilhari_service.config`, and passed directly to `JDXSchema` itself as `-DEBUGn` during reverse-engineering. Think of it as **depth, not severity**: a low number means a deep look, right down in the weeds — every SQL statement, every internal warning. A high number gives a high-level, cursory view, with most detail hidden. Default: `5` (the high-level, cursory view). Valid range: `0`–`5` (JDXSchema's own supported range) — an out-of-range value is clamped, with a warning. **`3` specifically is the level to reach for if you just want to see the SQL** — at `3`, JDX/Gilhari logs every SQL statement it executes at runtime, which is the main reason to use this flag when debugging a query/insert/update issue. Going *lower* than `3` adds substantially more internal debugging detail on top of the SQL logging, most of which isn't needed just to see the statements themselves — start at `3` and only go lower if that's not enough. `3` also surfaces a couple of otherwise-silent warnings (e.g. a column excluded from mapping for having a space in its name, or for being a binary type). **Caution:** runtime SQL logging at `<=3` includes literal bound values — avoid this setting in any environment where the log itself might be exposed and the data is sensitive. Also settable as `"jdx_debug_level": N` in the config file. |
 | `--yes`, `-y` | Auto-accept all confirmation prompts (non-interactive / CI mode). Requires `--tables` (or `tables` in config) to be set — use `all` to select every table. |
 
 ---
