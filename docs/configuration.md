@@ -127,6 +127,18 @@ In Oracle, `db_schema` is the schema owner (typically the username). Leave it bl
 "db_schema":  "MYOWNER"
 ```
 
+> **Known limitation — `LONG`/LOB columns and `ORA-22295`:** a single `LONG` or
+> other large LOB value written via `insert()` that is 8,192 characters or
+> longer can leave the cached `INSERT` statement in a bad state such that any
+> subsequent large LOB write (any column) on that same statement fails with
+> `ORA-22295`, until the process is restarted. `update()` is not affected.
+> This is currently believed to be an Oracle JDBC driver-level limitation
+> (internal LOB/stream-locator state tied to a cached `PreparedStatement`
+> that a standard `clearParameters()` call doesn't reach), not a JDX defect,
+> and is being tracked as such rather than worked around inside JDX. If you
+> hit `ORA-22295` after a large `LONG`/LOB insert, restarting the affected
+> process/container clears it.
+
 **SQLite**
 
 SQLite has no schema concept. Leave `db_schema` blank and put the file path in `jdbc_url`. No credentials are needed.
