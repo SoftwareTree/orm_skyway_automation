@@ -68,8 +68,8 @@ import sys
 import textwrap
 from pathlib import Path
 
-__version__ = "1.0.29"
-# Regenerated: 2026-08-03 5:48 PM PDT
+__version__ = "1.0.31"
+# Regenerated: 2026-08-05 4:13 PM PDT
 # This timestamp updates on every regeneration of this file, independent of
 # __version__ above -- __version__ is bumped manually, only once a change has
 # been verified, so multiple regenerations can share the same version number
@@ -945,8 +945,19 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
     # flag. That threshold also surfaces a couple of otherwise-silent
     # warnings (e.g. space-in-column-name exclusion at <=3, binary-column
     # exclusion at <=1), permanently invisible at the default of 5.
+    #
+    # Also passed to JDXSchema itself as a literal -DEBUGn command-line flag
+    # (Phase 1's -reverseEng and -metaForceCreate calls) — per the JDX user
+    # manual, -DEBUGn only accepts a single digit, 0-5. Clamped here so an
+    # out-of-range value (e.g. --jdx-debug-level 10) can't produce an
+    # invalid JDXSchema argument.
     _jdx_debug_level = getattr(args, "jdx_debug_level", None)
     cfg["jdx_debug_level"] = 5 if _jdx_debug_level is None else int(_jdx_debug_level)
+    if not (0 <= cfg["jdx_debug_level"] <= 5):
+        _clamped = max(0, min(5, cfg["jdx_debug_level"]))
+        warn(f"--jdx-debug-level {cfg['jdx_debug_level']} is out of JDX's supported range (0-5) — "
+             f"clamped to {_clamped}.")
+        cfg["jdx_debug_level"] = _clamped
     if cfg["jdx_debug_level"] != 5:
         verbose_info(f"JDX DEBUG_LEVEL set to {cfg['jdx_debug_level']} (default is 5, a high-level cursory view — "
                      "lower numbers go deeper, showing more detail).")
@@ -1234,14 +1245,21 @@ def ensure_jdxmetadata_via_jdxschema(cfg: dict, jdx_path: Path, all_tables: list
         "-cp", cp,
         "com.softwaretree.jdxtools.JDXSchema",
         "-metaForceCreate",
+        f"-DEBUG{cfg['jdx_debug_level']}",
         "-IGNORE_WARNINGS",
         str(jdx_path.resolve()),
     ]
     verbose_info(f"Command: {' '.join(cmd)}")
-    # Show JDXSchema output in verbose mode; always capture to check for errors
+    # Show JDXSchema output in verbose mode, OR whenever a non-default (more
+    # detailed) --jdx-debug-level was explicitly requested — that's its own
+    # explicit signal the user wants to see JDX's diagnostics, independent
+    # of --verbose (which controls orm_skyway.py's own progress reporting,
+    # a different thing). Otherwise setting --jdx-debug-level to a low value
+    # reaches JDXSchema correctly but produces no visible output at all.
     ret = subprocess.run(cmd, cwd=str(root), text=True,
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    verbose_info(ret.stdout.strip() if ret.stdout else "")
+    if (_VERBOSE or cfg["jdx_debug_level"] < 5) and ret.stdout:
+        print(ret.stdout.strip())
     # H12: JDXSchema may exit 0 even on fatal errors — check output too
     _jdx_failed = (ret.returncode != 0 or
                    (ret.stdout and ": Exception:" in ret.stdout))
@@ -1612,7 +1630,7 @@ def write_helper_scripts(cfg: dict, config_path: Path, selected_tables: list):
         #!/bin/bash
         cd "$(dirname "$0")/.."
         source ./{SCRIPTS_DIR}/setEnvironment.sh
-        java -DJX_HOME="$JX_HOME" com.softwaretree.jdxtools.JDXSchema -reverseEng {rel_config}
+        java -DJX_HOME="$JX_HOME" com.softwaretree.jdxtools.JDXSchema -reverseEng -DEBUG{cfg['jdx_debug_level']} {rel_config}
     """))
 
     # JDXReverseEngineer.bat
@@ -1620,7 +1638,7 @@ def write_helper_scripts(cfg: dict, config_path: Path, selected_tables: list):
         @echo off
         cd /d "%~dp0.."
         call {SCRIPTS_DIR}\\setEnvironment
-        java -DJX_HOME=%JX_HOME% com.softwaretree.jdxtools.JDXSchema -reverseEng {rel_config}
+        java -DJX_HOME=%JX_HOME% com.softwaretree.jdxtools.JDXSchema -reverseEng -DEBUG{cfg['jdx_debug_level']} {rel_config}
     """), encoding="utf-8")
 
     # Derive the package subdirectory path for clean step in scripts
@@ -1747,6 +1765,7 @@ def run_reverse_engineer(cfg: dict, config_path: Path):
         "-cp", cp,
         "com.softwaretree.jdxtools.JDXSchema",
         "-reverseEng",
+        f"-DEBUG{cfg['jdx_debug_level']}",
         str(config_path.resolve()),
     ]
     verbose_info(f"Command: {' '.join(cmd)}")
@@ -1754,11 +1773,12 @@ def run_reverse_engineer(cfg: dict, config_path: Path):
     # Run from project root — JDXSchema drops .java files in cwd.
     # Pipe 'A' (AlwaysYes) to stdin so JDXSchema automatically answers 'Yes'
     # to any 'overwrite existing file?' prompts without requiring user input.
-    # Capture output — show only in verbose mode to avoid noisy banner/warnings
-    # cluttering normal runs.
+    # Capture output — show in verbose mode, or automatically whenever a
+    # non-default --jdx-debug-level was requested (see below); otherwise
+    # stay quiet to avoid noisy banner/warnings cluttering normal runs.
     ret = subprocess.run(cmd, cwd=str(root), input="A\n", text=True,
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    if _VERBOSE and ret.stdout:
+    if (_VERBOSE or cfg["jdx_debug_level"] < 5) and ret.stdout:
         print(ret.stdout.rstrip())
     # JDXSchema may exit with code 0 even on fatal errors (e.g. unknown JDX_DBTYPE).
     # Detect failure by checking for "Exception:" in output as well as returncode.
