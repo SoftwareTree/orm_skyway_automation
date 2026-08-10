@@ -2,10 +2,12 @@ Copyright (c) 2025 Software Tree, LLC. All Rights Reserved.
 
 PROPRIETARY SOFTWARE LICENSE
 
-This software and associated documentation files (the "Software") are the
-proprietary property of Software Tree, LLC ("SoftwareTree"). The Software
-includes, references, and interoperates with the following proprietary
-technologies owned exclusively by SoftwareTree:
+This software (the "Software") consists of the orm_skyway.py automation
+script and its associated configuration files and documentation. The
+Software is the proprietary property of Software Tree, LLC ("SoftwareTree").
+The Software references and interoperates with, but does not include, the
+following proprietary technologies, which are owned exclusively by
+SoftwareTree and licensed separately:
 
   - JDX ORM  (Java Data eXchange Object Relational Mapping framework)
   - Gilhari  (RESTful microservice platform built on JDX ORM)
@@ -37,6 +39,10 @@ a limited, non-exclusive, non-transferable, revocable license to:
 This License does not grant you any rights to JDX ORM, Gilhari, or ORMCP
 themselves. Use of those products is governed by separate license agreements
 available from SoftwareTree.
+
+There is no license fee for use of the Software under the terms above.
+Separate license terms, which may include fees, govern use of JDX ORM,
+Gilhari, and ORMCP.
 
 --------------------------------------------------------------------------------
 RESTRICTIONS
