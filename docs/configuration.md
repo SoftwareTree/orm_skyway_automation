@@ -132,12 +132,19 @@ In Oracle, `db_schema` is the schema owner (typically the username). Leave it bl
 > longer can leave the cached `INSERT` statement in a bad state such that any
 > subsequent large LOB write (any column) on that same statement fails with
 > `ORA-22295`, until the process is restarted. `update()` is not affected.
-> This is currently believed to be an Oracle JDBC driver-level limitation
-> (internal LOB/stream-locator state tied to a cached `PreparedStatement`
-> that a standard `clearParameters()` call doesn't reach), not a JDX defect,
-> and is being tracked as such rather than worked around inside JDX. If you
-> hit `ORA-22295` after a large `LONG`/LOB insert, restarting the affected
-> process/container clears it.
+> This is an Oracle JDBC driver-level limitation, not a JDX defect — JDX 5.25
+> added a `clearParameters()` call aimed at this, but it is not sufficient on
+> its own against the affected driver releases.
+>
+> **Driver-version dependent, and the boundary is known:** confirmed absent
+> on every `ojdbc8` release up to and including **23.3.0.23.09**, and present
+> on **23.4.0.24.05** and every release since (through the newest published at
+> time of testing). **Recommended workaround: pin `jdbc_driver_jar` to
+> `ojdbc8 23.3.0.23.09`** — validated against the full Oracle test suite with
+> no other regressions (scores identically to the current driver). If you
+> hit `ORA-22295` after a large `LONG`/LOB insert and can't pin the driver,
+> restarting the affected process/container also clears it, but does not
+> prevent recurrence.
 
 **SQLite**
 

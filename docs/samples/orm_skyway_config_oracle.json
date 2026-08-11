@@ -4,6 +4,10 @@
         "db_schema: set to the schema owner (typically the username, e.g. 'SCOTT').",
         "jdbc_url formats: thin driver (recommended): jdbc:oracle:thin:@localhost:1521:orcl",
         "                  or with service name:       jdbc:oracle:thin:@//localhost:1521/myservice",
+        "jdbc_driver_jar: recommended ojdbc8 version is 23.3.0.23.09 -- later",
+        "                 releases (23.4.0.24.05 onward) can hit ORA-22295 on",
+        "                 large LONG/LOB inserts; see configuration.md's Oracle",
+        "                 section for details.",
         "Copy to your project root, rename to orm_skyway_config.json, and edit for your database.",
         "Run: python orm_skyway.py -f orm_skyway_config.json --phase 1+3"
     ],
