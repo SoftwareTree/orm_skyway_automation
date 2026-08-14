@@ -69,7 +69,7 @@ import textwrap
 from pathlib import Path
 
 __version__ = "1.0.31"
-# Regenerated: 2026-08-05 4:13 PM PDT
+# Regenerated: 2026-08-13 9:43 PM
 # This timestamp updates on every regeneration of this file, independent of
 # __version__ above -- __version__ is bumped manually, only once a change has
 # been verified, so multiple regenerations can share the same version number
@@ -3377,7 +3377,7 @@ No account, token, or beta-access request is needed — this installs from publi
 
 > **macOS note — virtual environment location:** Do not create your venv inside `~/Desktop/` or `~/Documents/`. macOS restricts access to these folders for apps without Full Disk Access, causing Claude Desktop to throw a `PermissionError` on `pyvenv.cfg`. Use an unrestricted location instead, e.g. `~/.ormcp-venv`.
 
-**If you have an existing Gemfury token** from an earlier beta install, it still works, but it's no longer required.
+**If you have an existing Gemfury token** from an earlier beta install, it will no longer work — Gemfury access has been discontinued. Use `pip install ormcp-server`.
 
 ---
 

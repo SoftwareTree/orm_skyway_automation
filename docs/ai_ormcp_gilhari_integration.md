@@ -1,6 +1,6 @@
 # Phase 5 — ORMCP / AI Agent Integration
 
-_Last updated: 2026-07-31 6:48 PM PDT_
+_Last updated: 2026-08-13 9:43 PM_
 
 **Goal:** Connect your running Gilhari microservice to an AI agent so it can query and interact with your business data through natural language.
 
@@ -39,7 +39,7 @@ No account, token, or beta-access request is needed — this installs from publi
 > ```
 > Then point Claude Desktop's `"command"` to `~/.ormcp-venv/bin/ormcp-server`.
 
-**If you have an existing Gemfury token** from an earlier beta install, it still works, but it's no longer required.
+**If you have an existing Gemfury token** from an earlier beta install, it will no longer work — Gemfury access has been discontinued. Use `pip install ormcp-server`.
 
 ---
 
