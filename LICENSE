@@ -26,8 +26,9 @@ Subject to the terms and conditions of this License, SoftwareTree grants you
 a limited, non-exclusive, non-transferable, revocable license to:
 
   1. Use this script ("orm_skyway.py") and its associated
-     configuration files solely for the purpose of reverse-engineering your own
-     relational database schemas into JDX / Gilhari object models.
+     configuration and documentation files solely for the purpose of
+     reverse-engineering your own relational database schemas into JDX /
+     Gilhari object models.
 
   2. Copy, modify, and adapt this script for your own internal use in
      connection with the purpose described in Section 1 (reverse-engineering
@@ -62,9 +63,12 @@ You may NOT, without prior written permission from SoftwareTree:
      (the Software itself is the reverse-engineering automation tool; this
      restriction applies to the underlying SoftwareTree platform libraries).
 
-  e. Use the names "JDX", "Gilhari", "ORMCP", or "Software Tree" in any
-     product name, promotional material, or documentation without prior
-     written consent from SoftwareTree.
+  e. Use the names "JDX", "Gilhari", "ORMCP", "ORM_Skyway", or "Software Tree"
+     as part of your own product or service name, or in any way that
+     suggests endorsement, sponsorship, or affiliation by SoftwareTree,
+     without prior written consent. This does not restrict truthful,
+     non-branding references to these names (e.g., stating that your
+     service was built using ORM_Skyway).
 
 --------------------------------------------------------------------------------
 THIRD-PARTY COMPONENTS
