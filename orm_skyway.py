@@ -68,8 +68,8 @@ import sys
 import textwrap
 from pathlib import Path
 
-__version__ = "1.0.31"
-# Regenerated: 2026-08-13 9:43 PM
+__version__ = "1.0.32"
+# Regenerated: 2026-08-17 12:46 PM PDT
 # This timestamp updates on every regeneration of this file, independent of
 # __version__ above -- __version__ is bumped manually, only once a change has
 # been verified, so multiple regenerations can share the same version number
@@ -4391,7 +4391,15 @@ def main():
             print()
             print("  When ready for Phase 3, run:")
             _script_path = sys.argv[0]
-            print(f"    python3 {_script_path} -f {args.config_file or 'orm_skyway_config.json'} --phase 3")
+            # Use sys.executable (the interpreter actually running right now),
+            # not a hardcoded "python3" — on systems where a different python3
+            # is the default (e.g. one where 3.14 is default but this script
+            # was invoked via a specific venv or version), a hardcoded name
+            # would suggest a command that fails, even though this exact
+            # invocation just worked. sys.argv[0] alone (the prior fix) only
+            # corrects the script PATH, not the interpreter itself — these
+            # are two different things and need two different fixes.
+            print(f"    {sys.executable} {_script_path} -f {args.config_file or 'orm_skyway_config.json'} --phase 3")
             return
 
     if run_p3:
