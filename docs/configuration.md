@@ -1,6 +1,6 @@
 # Configuration File Reference
 
-_Last updated: 2026-08-19 1:44 AM PDT_
+_Last updated: 2026-08-19 12:20 PM PDT_
 
 ← [README](../README.md)
 
@@ -68,6 +68,16 @@ The `tables` field controls which database tables are included in the object mod
 The DB type (MySQL, PostgreSQL, SQLite, etc.) is inferred automatically from the JDBC URL. You only need to supply it manually via `--db-type` if it cannot be detected.
 
 > **What "experimental" means for `db_type` values above:** ORM_Skyway is expected to support the database, but it hasn't yet gone through full verification against a real instance (reverse-engineering, model generation, REST packaging, CRUD, checked directly against the database). `db_type` values above without an "(experimental)" tag have been verified. Full definition and the current status list: [README § Supported Databases](../README.md#meaning-of-verified-and-experimental-status-below).
+
+### Advanced: driver connection properties in the URL
+
+If your JDBC driver needs connection properties appended directly to the URL and terminated with `;` (e.g. Db2's jcc driver), wrap the URL portion of the generated `JDX_DATABASE` line in single quotes so JDX doesn't treat that `;` as its own field separator:
+
+```
+JDX_DATABASE JDX:'jdbc:db2://host:50000/mydb:currentSchema=MYSCHEMA;';USER=...;PASSWORD=...;JDX_DBTYPE=DB2;DEBUG_LEVEL=5
+```
+
+Use ASCII `'` quotes, and keep the driver's own trailing `;` inside them. Applies to any database, not just Db2. Edit the generated spec between Phase 1 and Phase 3 — `jdbc_url` itself can't yet contain the quotes.
 
 ### Per-database `jdbc_url` and `db_schema` examples
 
@@ -188,9 +198,11 @@ In DB2, `db_schema` is the schema name (typically the username or a named schema
 "jdbc_driver_class": "com.ibm.db2.jcc.DB2Driver"
 ```
 
-`db_type` can be left blank — `DB2` is auto-detected from the URL and accepted directly.
+`db_type` can be left blank — `DB2` is auto-detected from the URL and accepted directly (requires JDX 5.26+; on earlier JDX builds set `db_type` to `IBMDB2` explicitly). `db_type: "GENERIC"` also works for Db2.
 
-> **Known limitation:** five DB2-specific JDBC connection properties added in JDX 05.26 (e.g. for advanced connection tuning) cannot currently be passed through `jdbc_url`. The DB2 driver (jcc) requires these properties in a `;`-terminated block, but `;` is also the field separator JDX uses internally in the generated `JDX_DATABASE` line, so the terminator doesn't survive. Core reverse-engineering, REST packaging, and CRUD operations are unaffected — this only blocks the small set of advanced properties. Workaround: none currently; tracked as a follow-up fix (either escaping/quoting the URL field, or accepting these properties through a separate config field).
+> Need to pass a Db2-specific connection property (`currentSchema`, `sslConnection`, etc.)? See [Advanced: driver connection properties in the URL](#advanced-driver-connection-properties-in-the-url) above.
+>
+> To see warnings for excluded columns (space in name, binary type), set `"jdx_debug_level": 4` — the default level doesn't show them.
 
 See [IBM DB2 JDBC driver documentation](https://www.ibm.com/docs/en/db2-big-sql/7.1.0?topic=drivers-jdbc-driver) for driver download and setup instructions.
 
