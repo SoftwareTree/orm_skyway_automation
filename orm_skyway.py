@@ -68,8 +68,8 @@ import sys
 import textwrap
 from pathlib import Path
 
-__version__ = "1.0.32"
-# Regenerated: 2026-08-17 12:46 PM PDT
+__version__ = "1.0.33"
+# Regenerated: 2026-08-19 2:33 PM PDT
 # This timestamp updates on every regeneration of this file, independent of
 # __version__ above -- __version__ is bumped manually, only once a change has
 # been verified, so multiple regenerations can share the same version number
@@ -323,6 +323,26 @@ def pkg_to_rel(package: str):
         return Path(".")
     return Path(*package.split("."))
 
+def _print_jdx_output(cfg, stdout):
+    """Print captured JDXSchema stdout.
+
+    In verbose mode, or whenever a non-default --jdx-debug-level was
+    requested, print everything JDXSchema produced (banner, license info,
+    warnings, etc) — that's an explicit request to see JDX's diagnostics.
+
+    Otherwise, keep the normal run quiet EXCEPT for WARNING!! lines (e.g.
+    "space in column name" / binary-column exclusions) — those should
+    always be visible, since they flag data the user's schema won't
+    include, and JDX emits them at the default debug level already.
+    """
+    if not stdout:
+        return
+    if _VERBOSE or cfg["jdx_debug_level"] < 5:
+        print(stdout.rstrip())
+        return
+    warning_lines = [ln for ln in stdout.splitlines() if "WARNING!!" in ln]
+    if warning_lines:
+        print("\n".join(warning_lines))
 
 def verbose_info(msg):
     """Print only when verbose mode is enabled."""
@@ -1258,8 +1278,8 @@ def ensure_jdxmetadata_via_jdxschema(cfg: dict, jdx_path: Path, all_tables: list
     # reaches JDXSchema correctly but produces no visible output at all.
     ret = subprocess.run(cmd, cwd=str(root), text=True,
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    if (_VERBOSE or cfg["jdx_debug_level"] < 5) and ret.stdout:
-        print(ret.stdout.strip())
+    _print_jdx_output(cfg, ret.stdout)
+
     # H12: JDXSchema may exit 0 even on fatal errors — check output too
     _jdx_failed = (ret.returncode != 0 or
                    (ret.stdout and ": Exception:" in ret.stdout))
@@ -1778,8 +1798,8 @@ def run_reverse_engineer(cfg: dict, config_path: Path):
     # stay quiet to avoid noisy banner/warnings cluttering normal runs.
     ret = subprocess.run(cmd, cwd=str(root), input="A\n", text=True,
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    if (_VERBOSE or cfg["jdx_debug_level"] < 5) and ret.stdout:
-        print(ret.stdout.rstrip())
+    _print_jdx_output(cfg, ret.stdout)
+
     # JDXSchema may exit with code 0 even on fatal errors (e.g. unknown JDX_DBTYPE).
     # Detect failure by checking for "Exception:" in output as well as returncode.
     _jdx_failed = (ret.returncode != 0 or
@@ -2858,11 +2878,8 @@ def build_arg_parser():
                                                 "(the high-level, cursory view). At <= 3, JDX/Gilhari also "
                                                 "logs every SQL statement it executes at runtime — the main "
                                                 "reason to reach for this flag when debugging a query/insert/ "
-                                                "update issue. That same threshold also surfaces a couple of "
-                                                "otherwise-silent warnings, e.g. a column excluded from mapping "
-                                                "for having a space in its name (<= 3) or for being a binary type "
-                                                "(<= 1). At the default of 5, none of this is visible. Note: "
-                                                "runtime SQL logging includes literal bound values, so avoid <= 3 "
+                                                "update issue."
+                                                "Note: runtime SQL logging includes literal bound values, so avoid <= 3 "
                                                 "in any environment where the SQL log itself might be exposed and "
                                                 "the data is sensitive.")
     p.add_argument("--yes", "-y",         action="store_true", help="Auto-accept all confirmation prompts (non-interactive / CI mode)")
