@@ -1,6 +1,6 @@
 # Configuration File Reference
 
-_Last updated: 2026-08-19 12:20 PM PDT_
+_Last updated: 2026-08-19 2:43 PM PDT_
 
 ← [README](../README.md)
 
@@ -201,8 +201,6 @@ In DB2, `db_schema` is the schema name (typically the username or a named schema
 `db_type` can be left blank — `DB2` is auto-detected from the URL and accepted directly (requires JDX 5.26+; on earlier JDX builds set `db_type` to `IBMDB2` explicitly). `db_type: "GENERIC"` also works for Db2.
 
 > Need to pass a Db2-specific connection property (`currentSchema`, `sslConnection`, etc.)? See [Advanced: driver connection properties in the URL](#advanced-driver-connection-properties-in-the-url) above.
->
-> To see warnings for excluded columns (space in name, binary type), set `"jdx_debug_level": 4` — the default level doesn't show them.
 
 See [IBM DB2 JDBC driver documentation](https://www.ibm.com/docs/en/db2-big-sql/7.1.0?topic=drivers-jdbc-driver) for driver download and setup instructions.
 
