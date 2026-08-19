@@ -1,6 +1,6 @@
 # Configuration File Reference
 
-_Last updated: 2026-07-22 12:05 AM PDT_
+_Last updated: 2026-08-19 1:44 AM PDT_
 
 ← [README](../README.md)
 
@@ -59,13 +59,15 @@ The `tables` field controls which database tables are included in the object mod
 |---|---|
 | `jdbc_url` | JDBC connection URL. The DB type (MySQL, PostgreSQL, SQLite, etc.) is inferred automatically from this URL. |
 | `db_schema` | Schema or catalog to inspect. The meaning varies by database — see the per-DB examples below. For PostgreSQL, if left blank the script defaults to the `public` schema. |
-| `db_type` | Overrides the DB type inferred from `jdbc_url`. Leave blank for auto-detection (recommended). Valid values: `MYSQL`, `POSTGRES`, `ORACLE`, `MSSQL`, `SQLITE`, `DB2` *(experimental)*, `SNOWFLAKE` *(experimental)*, `MARIADB` *(experimental)*, `DATABRICKS` *(experimental)*, `SPANNER` *(experimental)*, `COCKROACHDB` *(experimental)*, `YUGABYTE` *(experimental)*, `GENERIC` (any other JDBC-compliant data source — see [GENERIC mode](#generic-mode--connecting-to-any-jdbc-data-source-requires-jdx-522) below). Useful when the JDBC URL format is non-standard and auto-detection fails. JDX also supports additional tokens (e.g. `ORACLE9`) that can be passed through verbatim. |
+| `db_type` | Overrides the DB type inferred from `jdbc_url`. Leave blank for auto-detection (recommended). Valid values: `MYSQL`, `POSTGRES`, `ORACLE`, `MSSQL`, `SQLITE`, `SNOWFLAKE`, `COCKROACHDB`, `DB2`, `SAPHANA`, `MARIADB` *(experimental)*, `DATABRICKS` *(experimental)*, `SPANNER` *(experimental)*, `YUGABYTE` *(experimental)*, `GENERIC` (any other JDBC-compliant data source — see [GENERIC mode](#generic-mode--connecting-to-any-jdbc-data-source) below). Useful when the JDBC URL format is non-standard and auto-detection fails. |
 | `db_user` | Database username |
 | `db_password` | Database password |
 | `jdbc_driver_jar` | Full path to the JDBC driver JAR. Used both to connect in Phase 1 and copied into `config/` for Docker packaging in Phase 3. |
 | `jdbc_driver_class` | JDBC driver class name. A default is suggested based on the detected DB type, but can be overridden — set this explicitly if your JDBC driver JAR uses a different class name. Common values: `com.mysql.cj.jdbc.Driver`, `org.postgresql.Driver`, `org.sqlite.JDBC`, `com.microsoft.sqlserver.jdbc.SQLServerDriver`, `com.ibm.db2.jcc.DB2Driver`, `net.snowflake.client.api.driver.SnowflakeDriver` |
 
 The DB type (MySQL, PostgreSQL, SQLite, etc.) is inferred automatically from the JDBC URL. You only need to supply it manually via `--db-type` if it cannot be detected.
+
+> **What "experimental" means for `db_type` values above:** ORM_Skyway is expected to support the database, but it hasn't yet gone through full verification against a real instance (reverse-engineering, model generation, REST packaging, CRUD, checked directly against the database). `db_type` values above without an "(experimental)" tag have been verified. Full definition and the current status list: [README § Supported Databases](../README.md#meaning-of-verified-and-experimental-status-below).
 
 ### Per-database `jdbc_url` and `db_schema` examples
 
@@ -176,7 +178,7 @@ In MSSQL, the database name appears in the URL and `db_schema` holds the schema 
 "db_schema":  "dbo"
 ```
 
-**IBM DB2** *(experimental — not yet verified)*
+**IBM DB2** *(✅ Verified — Db2 for LUW)*
 
 In DB2, `db_schema` is the schema name (typically the username or a named schema). The database name goes in the JDBC URL.
 
@@ -186,11 +188,29 @@ In DB2, `db_schema` is the schema name (typically the username or a named schema
 "jdbc_driver_class": "com.ibm.db2.jcc.DB2Driver"
 ```
 
+`db_type` can be left blank — `DB2` is auto-detected from the URL and accepted directly.
+
+> **Known limitation:** five DB2-specific JDBC connection properties added in JDX 05.26 (e.g. for advanced connection tuning) cannot currently be passed through `jdbc_url`. The DB2 driver (jcc) requires these properties in a `;`-terminated block, but `;` is also the field separator JDX uses internally in the generated `JDX_DATABASE` line, so the terminator doesn't survive. Core reverse-engineering, REST packaging, and CRUD operations are unaffected — this only blocks the small set of advanced properties. Workaround: none currently; tracked as a follow-up fix (either escaping/quoting the URL field, or accepting these properties through a separate config field).
+
 See [IBM DB2 JDBC driver documentation](https://www.ibm.com/docs/en/db2-big-sql/7.1.0?topic=drivers-jdbc-driver) for driver download and setup instructions.
 
-**Snowflake** *(experimental)*
+**SAP HANA** *(✅ Verified — SAP HANA Cloud and on-premise)*
 
-> **Note:** Snowflake support is experimental and has not yet been fully verified end-to-end. Use with caution and test thoroughly before using in production.
+In SAP HANA, `db_schema` is the schema name — `DBADMIN` by default on HANA Cloud trial instances.
+
+```json
+"jdbc_url":   "jdbc:sap://<host>:443?encrypt=true&validateCertificate=true",
+"db_schema":  "DBADMIN",
+"jdbc_driver_class": "com.sap.db.jdbc.Driver"
+```
+
+Default port is `443` for HANA Cloud, `30015` for on-premise SAP HANA. Set `db_type` to `SAPHANA` explicitly — JDX has a dedicated HANA code path, and this token is required rather than auto-detected.
+
+If using a HANA Cloud trial instance, its IP allowlist may need to be opened (e.g. `0.0.0.0/0`) for ORM_Skyway to reach it from your machine.
+
+See [SAP HANA JDBC driver (ngdbc.jar) download](https://tools.hana.ondemand.com/#hanatools) for driver setup instructions.
+
+**Snowflake** *(✅ Verified)*
 
 In Snowflake, the database, schema, and warehouse are all specified as URL parameters. The `db_schema` field holds the schema name. If left blank, the script extracts the schema from the `schema=` URL parameter automatically. If both are set, they must match or the script will exit with an error.
 
@@ -232,6 +252,7 @@ Databricks uses token-based authentication. The `db_user` should be set to `toke
 ```
 
 **Google Spanner** *(experimental — not yet verified)*
+
 
 Uses Spanner's PostgreSQL-compatible interface. Two connection options are available — Option B is recommended since it uses the same PostgreSQL JDBC driver as all other PostgreSQL-family databases in `orm_skyway`, and is fully compatible with `orm_skyway`'s UUID support.
 
@@ -290,9 +311,9 @@ See `docs/sample/orm_skyway_config_spanner.json` for a complete sample configura
 
 ORM_Skyway includes implicit support for other file-based databases. The same Docker volume mount / embed logic that applies to SQLite also applies to H2 (file mode), HSQLDB (file mode), Derby (embedded mode), and Excel (via JDBC). Sample configuration files for these databases are provided in `docs/samples/`. Note that JDX support for these has not been fully verified end-to-end and may require further enhancements.
 
-**CockroachDB and YugabyteDB** *(experimental — not yet verified)*
+**CockroachDB** *(✅ Verified — PostgreSQL interface)*
 
-Both are PostgreSQL-compatible. Use the standard PostgreSQL JDBC driver and follow the same `db_schema` guidance as PostgreSQL.
+PostgreSQL-compatible. Use the standard PostgreSQL JDBC driver and follow the same `db_schema` guidance as PostgreSQL.
 
 ```json
 "jdbc_url":   "jdbc:postgresql://<host>:<port>/<database>",
@@ -300,7 +321,11 @@ Both are PostgreSQL-compatible. Use the standard PostgreSQL JDBC driver and foll
 "jdbc_driver_class": "org.postgresql.Driver"
 ```
 
-**GENERIC mode — connecting to any JDBC data source** *(requires JDX 5.22+)*
+**YugabyteDB** *(experimental — not yet verified, PostgreSQL interface)*
+
+Also PostgreSQL-compatible. Same driver and `db_schema` guidance as CockroachDB and PostgreSQL above — not yet independently verified.
+
+**GENERIC mode — connecting to any JDBC data source**
 
 If your database isn't one of the types above, `db_type: "GENERIC"` lets you connect to **any** JDBC-compliant data source — including ones ORM_Skyway has never heard of — without any code changes. When `JDX_DBTYPE=GENERIC` is set, JDX passes every non-JDX-internal property straight through to the JDBC driver, with no whitelist filtering. JDX's own internal keys (`JDX_DBTYPE`, `DEBUG_LEVEL`, `JDX_ORMFile`, etc.) are automatically excluded from what gets forwarded, so they never leak into the driver's connection properties.
 
@@ -384,13 +409,14 @@ Ready-to-use sample configuration files are provided in the `docs/samples/` dire
 | `orm_skyway_config_oracle.json` | Oracle |
 | `orm_skyway_config_sqlserver.json` | Microsoft SQL Server |
 | `orm_skyway_config_sqlite.json` | SQLite |
-| `orm_skyway_config_db2.json` | IBM DB2 *(experimental)* |
-| `orm_skyway_config_snowflake.json` | Snowflake *(experimental)* |
-| `orm_skyway_config_mac_snowflake.json` | Snowflake, macOS-style paths *(experimental)* |
+| `orm_skyway_config_db2.json` | IBM DB2 |
+| `orm_skyway_config_hana.json` | SAP HANA |
+| `orm_skyway_config_snowflake.json` | Snowflake |
+| `orm_skyway_config_mac_snowflake.json` | Snowflake, macOS-style paths |
 | `orm_skyway_config_mariadb.json` | MariaDB *(experimental)* |
 | `orm_skyway_config_databricks.json` | Databricks *(experimental)* |
 | `orm_skyway_config_spanner.json` | Google Cloud Spanner *(experimental)* |
-| `orm_skyway_config_generic.json` | Any other JDBC-compliant data source — [GENERIC mode](#generic-mode--connecting-to-any-jdbc-data-source-requires-jdx-522) |
+| `orm_skyway_config_generic.json` | Any other JDBC-compliant data source — [GENERIC mode](#generic-mode--connecting-to-any-jdbc-data-source) |
 
 Each file includes comments explaining the key settings for that database type.
 

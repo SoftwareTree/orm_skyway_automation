@@ -1,6 +1,6 @@
 # Command-Line Reference
 
-_Last updated: 2026-08-05 5:31 PM PDT_
+_Last updated: 2026-08-19 1:44 AM PDT_
 
 ← [README](../README.md)
 
@@ -34,7 +34,7 @@ CLI flags always override values in the config file. Any value not supplied via 
 | `--db-schema SCHEMA` | Database schema/catalog to inspect (blank = default) |
 | `--db-user USER` | Database username |
 | `--db-password PASSWORD` | Database password |
-| `--db-type TYPE` | `MYSQL` / `POSTGRES` / `ORACLE` / `MSSQL` / `SQLITE` / `SNOWFLAKE` / `COCKROACHDB` (auto-detected from URL if omitted). These are the ✅ Verified database types — see the [Supported Databases table](../README.md#supported-databases) in the README. Additional experimental types (`DB2`, `MARIADB`, `DATABRICKS`, `SPANNER`, `YUGABYTE`, `HANA`/`SAPHANA`, and others JDX accepts verbatim) are also supported but not yet fully verified — see [configuration.md](configuration.md) for the full list. `GENERIC` connects to any JDBC-compliant data source not otherwise recognized (requires JDX 5.22+) — see [GENERIC mode](configuration.md#generic-mode--connecting-to-any-jdbc-data-source-requires-jdx-522). `EXCEL` is auto-detected from a `jdbc:excel:` URL — see [configuration.md](configuration.md) for Excel-specific setup notes. |
+| `--db-type TYPE` | `MYSQL` / `POSTGRES` / `ORACLE` / `MSSQL` / `SQLITE` / `SNOWFLAKE` / `COCKROACHDB` / `DB2` / `SAPHANA` (auto-detected from URL if omitted). These are the ✅ Verified database types — see the [Supported Databases table](../README.md#supported-databases) in the README. Additional experimental types (`MARIADB`, `DATABRICKS`, `SPANNER`, `YUGABYTE`, and others JDX accepts verbatim) are also supported but not yet fully verified — see [configuration.md](configuration.md) for the full list. `GENERIC` connects to any JDBC-compliant data source not otherwise recognized — see [GENERIC mode](configuration.md#generic-mode--connecting-to-any-jdbc-data-source). `EXCEL` is auto-detected from a `jdbc:excel:` URL — see [configuration.md](configuration.md) for Excel-specific setup notes. |
 | `--jdbc-driver-class CLASS` | JDBC driver class name |
 | `--jdbc-driver-jar PATH` | Full path to the JDBC driver JAR |
 | `--jdbc-driver-lic PATH` | Path to an accompanying JDBC driver license file, if the driver needs one (e.g. CData drivers, used for Excel). Auto-detected by default as a same-stem `.lic` file next to the jar (e.g. `cdata.jdbc.excel.jar` → `cdata.jdbc.excel.lic`) and copied into `config/` for Docker packaging — only set this explicitly if your license file doesn't follow that naming convention. |

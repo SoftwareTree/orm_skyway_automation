@@ -1,7 +1,8 @@
 {
     "_comments": [
-        "Sample configuration for SAP HANA Cloud / SAP HANA (tested; still classified",
-        "Experimental in ORM_Skyway's supported database list).",
+        "Last updated: 2026-08-19 1:44 AM PDT",
+        "",
+        "Sample configuration for SAP HANA Cloud / SAP HANA. Verified.",
         "",
         "Prerequisites:",
         "  - SAP HANA Cloud instance (e.g. a free/trial-tier instance) or on-premise SAP HANA.",

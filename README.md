@@ -1,7 +1,12 @@
 Copyright (c) 2025 SoftwareTree, Inc. All Rights Reserved.
+
+<p align="center">
+  <img src="assets/orm_skyway_logo.png" alt="ORM_Skyway — Making Your Database AI-Ready" width="480">
+</p>
+
 # Make Your Database AI-Ready — Automatically
 
-_Last updated: 2026-07-19 12:18 AM PDT_
+_Last updated: 2026-08-19 1:44 AM PDT_
 
 **Your business data is already in databases. The missing piece is making it accessible to AI.**
 
@@ -190,6 +195,12 @@ Claude Desktop starts the ORMCP server automatically — no separate terminal ne
 
 ## Supported Databases
 
+### Meaning of "Verified" and "Experimental" Status below
+
+**What "Verified" means:** the database has been tested against a real instance through ORM_Skyway's core workflow — schema reverse-engineering, business object model generation, REST packaging, and CRUD operations — with results checked directly against the database, not just assumed from a passing test. It does not mean every database version, every JDBC driver, or every JDBC connection property has been exercised — that's true of every entry below, not just newer ones. Known limitations for a specific database, where they exist, are noted individually rather than left implicit.
+
+**What "Experimental" means:** ORM_Skyway is expected to support the database — through a dedicated connection type or through its `GENERIC` JDBC fallback — but that support hasn't yet gone through the verification process above.
+
 | Database | Status |
 |---|---|
 | PostgreSQL | ✅ Verified |
@@ -197,13 +208,13 @@ Claude Desktop starts the ORMCP server automatically — no separate terminal ne
 | Oracle | ✅ Verified |
 | SQLite | ✅ Verified |
 | SQL Server (MSSQL) | ✅ Verified |
-| DB2 | ⚠️ Experimental |
 | Snowflake | ✅ Verified |
+| CockroachDB (PostgreSQL interface) | ✅ Verified |
+| SAP HANA | ✅ Verified |
+| DB2 (LUW) | ✅ Verified |
 | Databricks | ⚠️ Experimental |
-| SAP HANA | ⚠️ Experimental |
 | MariaDB | ⚠️ Experimental |
 | Spanner (PostgreSQL interface) | ⚠️ Experimental |
-| CockroachDB (PostgreSQL interface) | ✅ Verified |
 | YugabyteDB | ⚠️ Experimental |
 
 ---
