@@ -61,3 +61,9 @@ Thumbs.db
 # Other non-core files created for backups
 # -----------------------------------------------------------------------------
 *.zip
+
+# -----------------------------------------------------------------------------
+# Internal release scripts (not needed to build or run this project)
+# -----------------------------------------------------------------------------
+docker/publish.cmd
+docker/publish.sh
