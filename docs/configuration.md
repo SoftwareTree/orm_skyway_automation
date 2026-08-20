@@ -1,6 +1,6 @@
 # Configuration File Reference
 
-_Last updated: 2026-08-19 2:43 PM PDT_
+_Last updated: 2026-08-19 1:44 AM PDT_
 
 ← [README](../README.md)
 
@@ -69,43 +69,11 @@ The DB type (MySQL, PostgreSQL, SQLite, etc.) is inferred automatically from the
 
 > **What "experimental" means for `db_type` values above:** ORM_Skyway is expected to support the database, but it hasn't yet gone through full verification against a real instance (reverse-engineering, model generation, REST packaging, CRUD, checked directly against the database). `db_type` values above without an "(experimental)" tag have been verified. Full definition and the current status list: [README § Supported Databases](../README.md#meaning-of-verified-and-experimental-status-below).
 
-### Advanced: driver connection properties in the URL
-
-If your JDBC driver needs connection properties appended directly to the URL and terminated with `;` (e.g. Db2's jcc driver), wrap the URL portion of the generated `JDX_DATABASE` line in single quotes so JDX doesn't treat that `;` as its own field separator:
-
-```
-JDX_DATABASE JDX:'jdbc:db2://host:50000/mydb:currentSchema=MYSCHEMA;';USER=...;PASSWORD=...;JDX_DBTYPE=DB2;DEBUG_LEVEL=5
-```
-
-Use ASCII `'` quotes, and keep the driver's own trailing `;` inside them. Applies to any database, not just Db2. Edit the generated spec between Phase 1 and Phase 3 — `jdbc_url` itself can't yet contain the quotes.
-
 ### Per-database `jdbc_url` and `db_schema` examples
 
 The relationship between `jdbc_url` and `db_schema` varies by database. Use the examples below as a guide.
 
-**MySQL**
-
-In MySQL, the database name and schema name are the same concept. The database name appears in the JDBC URL path, and `db_schema` should match it to scope table discovery to that database only.
-
-If `db_schema` is left blank, the script extracts the database name from the JDBC URL automatically (e.g. `sakila` from `jdbc:mysql://localhost:3306/sakila`) and uses it as the effective schema. This avoids cross-database table leakage. If extraction fails, a warning is shown and all databases are scanned.
-
-```json
-"jdbc_url":   "jdbc:mysql://localhost:3306/sakila",
-"db_schema":  "sakila"
-```
-
-`db_schema` can also be left blank — the script will extract `sakila` from the URL:
-
-```json
-"jdbc_url":   "jdbc:mysql://localhost:3306/sakila?useSSL=FALSE",
-"db_schema":  ""
-```
-
-If your MySQL URL includes connection parameters (e.g. `?useSSL=FALSE`), include them in `jdbc_url` — `db_schema` still just holds the database name if set explicitly.
-
-If `db_schema` is set explicitly, it must match the database name in `jdbc_url` — in MySQL these are the same concept and a mismatch will cause the script to exit with an error.
-
-**PostgreSQL**
+**PostgreSQL** *(✅ Verified)*
 
 In PostgreSQL, the database name and schema name are separate concepts. The database name goes in the JDBC URL path; the schema name (e.g. `public`, `myschema`) goes in `db_schema`. The script automatically injects `?currentSchema=<db_schema>` into the JDBC URL written into the generated ORM files so the JDX runtime resolves tables in the correct schema.
 
@@ -130,7 +98,29 @@ If you already include `?currentSchema=myschema` in your JDBC URL, leave `db_sch
 "db_schema":  ""
 ```
 
-**Oracle**
+**MySQL** *(✅ Verified)*
+
+In MySQL, the database name and schema name are the same concept. The database name appears in the JDBC URL path, and `db_schema` should match it to scope table discovery to that database only.
+
+If `db_schema` is left blank, the script extracts the database name from the JDBC URL automatically (e.g. `sakila` from `jdbc:mysql://localhost:3306/sakila`) and uses it as the effective schema. This avoids cross-database table leakage. If extraction fails, a warning is shown and all databases are scanned.
+
+```json
+"jdbc_url":   "jdbc:mysql://localhost:3306/sakila",
+"db_schema":  "sakila"
+```
+
+`db_schema` can also be left blank — the script will extract `sakila` from the URL:
+
+```json
+"jdbc_url":   "jdbc:mysql://localhost:3306/sakila?useSSL=FALSE",
+"db_schema":  ""
+```
+
+If your MySQL URL includes connection parameters (e.g. `?useSSL=FALSE`), include them in `jdbc_url` — `db_schema` still just holds the database name if set explicitly.
+
+If `db_schema` is set explicitly, it must match the database name in `jdbc_url` — in MySQL these are the same concept and a mismatch will cause the script to exit with an error.
+
+**Oracle** *(✅ Verified)*
 
 In Oracle, `db_schema` is the schema owner (typically the username). Leave it blank to inspect all schemas visible to the connecting user, or set it to the specific owner whose tables you want.
 
@@ -158,7 +148,7 @@ In Oracle, `db_schema` is the schema owner (typically the username). Leave it bl
 > restarting the affected process/container also clears it, but does not
 > prevent recurrence.
 
-**SQLite**
+**SQLite** *(✅ Verified)*
 
 SQLite has no schema concept. Leave `db_schema` blank and put the file path in `jdbc_url`. No credentials are needed.
 
@@ -179,7 +169,7 @@ SQLite is file-based, not network-based. Unlike other databases where `localhost
 
 In both modes, the script rewrites the JDBC URL in `.docker.jdx` to a fixed container path (`/opt/<image_name>/db/<filename>`) regardless of whether the original path was relative or absolute, ensuring consistent behaviour across all operating systems.
 
-**Microsoft SQL Server**
+**SQL Server (MSSQL)** *(✅ Verified)*
 
 In MSSQL, the database name appears in the URL and `db_schema` holds the schema (typically `dbo`).
 
@@ -187,38 +177,6 @@ In MSSQL, the database name appears in the URL and `db_schema` holds the schema 
 "jdbc_url":   "jdbc:sqlserver://localhost:1433;databaseName=mydb",
 "db_schema":  "dbo"
 ```
-
-**IBM DB2** *(✅ Verified — Db2 for LUW)*
-
-In DB2, `db_schema` is the schema name (typically the username or a named schema). The database name goes in the JDBC URL.
-
-```json
-"jdbc_url":   "jdbc:db2://localhost:50000/mydb",
-"db_schema":  "MYSCHEMA",
-"jdbc_driver_class": "com.ibm.db2.jcc.DB2Driver"
-```
-
-`db_type` can be left blank — `DB2` is auto-detected from the URL and accepted directly (requires JDX 5.26+; on earlier JDX builds set `db_type` to `IBMDB2` explicitly). `db_type: "GENERIC"` also works for Db2.
-
-> Need to pass a Db2-specific connection property (`currentSchema`, `sslConnection`, etc.)? See [Advanced: driver connection properties in the URL](#advanced-driver-connection-properties-in-the-url) above.
-
-See [IBM DB2 JDBC driver documentation](https://www.ibm.com/docs/en/db2-big-sql/7.1.0?topic=drivers-jdbc-driver) for driver download and setup instructions.
-
-**SAP HANA** *(✅ Verified — SAP HANA Cloud and on-premise)*
-
-In SAP HANA, `db_schema` is the schema name — `DBADMIN` by default on HANA Cloud trial instances.
-
-```json
-"jdbc_url":   "jdbc:sap://<host>:443?encrypt=true&validateCertificate=true",
-"db_schema":  "DBADMIN",
-"jdbc_driver_class": "com.sap.db.jdbc.Driver"
-```
-
-Default port is `443` for HANA Cloud, `30015` for on-premise SAP HANA. Set `db_type` to `SAPHANA` explicitly — JDX has a dedicated HANA code path, and this token is required rather than auto-detected.
-
-If using a HANA Cloud trial instance, its IP allowlist may need to be opened (e.g. `0.0.0.0/0`) for ORM_Skyway to reach it from your machine.
-
-See [SAP HANA JDBC driver (ngdbc.jar) download](https://tools.hana.ondemand.com/#hanatools) for driver setup instructions.
 
 **Snowflake** *(✅ Verified)*
 
@@ -239,15 +197,47 @@ In Snowflake, the database, schema, and warehouse are all specified as URL param
 
 See [Snowflake JDBC driver documentation](https://docs.snowflake.com/en/developer-guide/jdbc/jdbc) for driver download and setup instructions.
 
-**MariaDB** *(experimental — not yet verified)*
+**CockroachDB** *(✅ Verified — PostgreSQL interface)*
 
-MariaDB is MySQL-compatible. The `db_schema` field behaves the same as MySQL — it should match the database name in the JDBC URL, or leave blank for auto-extraction.
+PostgreSQL-compatible. Use the standard PostgreSQL JDBC driver and follow the same `db_schema` guidance as PostgreSQL.
 
 ```json
-"jdbc_url":   "jdbc:mariadb://localhost:3306/mydb",
-"db_schema":  "mydb",
-"jdbc_driver_class": "org.mariadb.jdbc.Driver"
+"jdbc_url":   "jdbc:postgresql://<host>:<port>/<database>",
+"db_schema":  "public",
+"jdbc_driver_class": "org.postgresql.Driver"
 ```
+
+**SAP HANA** *(✅ Verified — SAP HANA Cloud and on-premise)*
+
+In SAP HANA, `db_schema` is the schema name — `DBADMIN` by default on HANA Cloud trial instances.
+
+```json
+"jdbc_url":   "jdbc:sap://<host>:443?encrypt=true&validateCertificate=true",
+"db_schema":  "DBADMIN",
+"jdbc_driver_class": "com.sap.db.jdbc.Driver"
+```
+
+Default port is `443` for HANA Cloud, `30015` for on-premise SAP HANA. Set `db_type` to `SAPHANA` explicitly — JDX has a dedicated HANA code path, and this token is required rather than auto-detected.
+
+If using a HANA Cloud trial instance, its IP allowlist may need to be opened (e.g. `0.0.0.0/0`) for ORM_Skyway to reach it from your machine.
+
+See [SAP HANA JDBC driver (ngdbc.jar) download](https://tools.hana.ondemand.com/#hanatools) for driver setup instructions.
+
+**DB2 (LUW)** *(✅ Verified)*
+
+In DB2, `db_schema` is the schema name (typically the username or a named schema). The database name goes in the JDBC URL.
+
+```json
+"jdbc_url":   "jdbc:db2://localhost:50000/mydb",
+"db_schema":  "MYSCHEMA",
+"jdbc_driver_class": "com.ibm.db2.jcc.DB2Driver"
+```
+
+`db_type` can be left blank — `DB2` is auto-detected from the URL and accepted directly.
+
+> **Known limitation:** five DB2-specific JDBC connection properties added in JDX 05.26 (e.g. for advanced connection tuning) cannot currently be passed through `jdbc_url`. The DB2 driver (jcc) requires these properties in a `;`-terminated block, but `;` is also the field separator JDX uses internally in the generated `JDX_DATABASE` line, so the terminator doesn't survive. Core reverse-engineering, REST packaging, and CRUD operations are unaffected — this only blocks the small set of advanced properties. Workaround: none currently; tracked as a follow-up fix (either escaping/quoting the URL field, or accepting these properties through a separate config field).
+
+See [IBM DB2 JDBC driver documentation](https://www.ibm.com/docs/en/db2-big-sql/7.1.0?topic=drivers-jdbc-driver) for driver download and setup instructions.
 
 **Databricks** *(experimental — not yet verified)*
 
@@ -261,7 +251,17 @@ Databricks uses token-based authentication. The `db_user` should be set to `toke
 "jdbc_driver_class": "com.databricks.client.jdbc.Driver"
 ```
 
-**Google Spanner** *(experimental — not yet verified)*
+**MariaDB** *(experimental — not yet verified)*
+
+MariaDB is MySQL-compatible. The `db_schema` field behaves the same as MySQL — it should match the database name in the JDBC URL, or leave blank for auto-extraction.
+
+```json
+"jdbc_url":   "jdbc:mariadb://localhost:3306/mydb",
+"db_schema":  "mydb",
+"jdbc_driver_class": "org.mariadb.jdbc.Driver"
+```
+
+**Spanner (PostgreSQL interface)** *(experimental — not yet verified)*
 
 
 Uses Spanner's PostgreSQL-compatible interface. Two connection options are available — Option B is recommended since it uses the same PostgreSQL JDBC driver as all other PostgreSQL-family databases in `orm_skyway`, and is fully compatible with `orm_skyway`'s UUID support.
@@ -315,25 +315,15 @@ For Cloud Spanner, replace the URL with:
 "jdbc_url": "jdbc:cloudspanner:/projects/<project>/instances/<instance>/databases/<database>?dialect=POSTGRESQL"
 ```
 
-See `docs/sample/orm_skyway_config_spanner.json` for a complete sample configuration with both options.
-
-**Other file-based databases (H2, HSQLDB, Derby, Excel)**
-
-ORM_Skyway includes implicit support for other file-based databases. The same Docker volume mount / embed logic that applies to SQLite also applies to H2 (file mode), HSQLDB (file mode), Derby (embedded mode), and Excel (via JDBC). Sample configuration files for these databases are provided in `docs/samples/`. Note that JDX support for these has not been fully verified end-to-end and may require further enhancements.
-
-**CockroachDB** *(✅ Verified — PostgreSQL interface)*
-
-PostgreSQL-compatible. Use the standard PostgreSQL JDBC driver and follow the same `db_schema` guidance as PostgreSQL.
-
-```json
-"jdbc_url":   "jdbc:postgresql://<host>:<port>/<database>",
-"db_schema":  "public",
-"jdbc_driver_class": "org.postgresql.Driver"
-```
+See `docs/samples/orm_skyway_config_spanner.json` for a complete sample configuration with both options.
 
 **YugabyteDB** *(experimental — not yet verified, PostgreSQL interface)*
 
 Also PostgreSQL-compatible. Same driver and `db_schema` guidance as CockroachDB and PostgreSQL above — not yet independently verified.
+
+**Other file-based databases (H2, HSQLDB, Derby, Excel)**
+
+ORM_Skyway includes implicit support for other file-based databases. The same Docker volume mount / embed logic that applies to SQLite also applies to H2 (file mode), HSQLDB (file mode), Derby (embedded mode), and Excel (via JDBC). No sample configuration files are currently provided for these — start from the SQLite sample (`docs/samples/orm_skyway_config_sqlite.json`) and adjust the driver/URL. Note that JDX support for these has not been fully verified end-to-end and may require further enhancements.
 
 **GENERIC mode — connecting to any JDBC data source**
 
@@ -414,18 +404,19 @@ Ready-to-use sample configuration files are provided in the `docs/samples/` dire
 
 | File | Database |
 |---|---|
-| `orm_skyway_config_mysql.json` | MySQL |
 | `orm_skyway_config_postgres.json` | PostgreSQL |
+| `orm_skyway_config_mysql.json` | MySQL |
 | `orm_skyway_config_oracle.json` | Oracle |
-| `orm_skyway_config_sqlserver.json` | Microsoft SQL Server |
 | `orm_skyway_config_sqlite.json` | SQLite |
-| `orm_skyway_config_db2.json` | IBM DB2 |
-| `orm_skyway_config_hana.json` | SAP HANA |
+| `orm_skyway_config_sqlserver.json` | SQL Server (MSSQL) |
 | `orm_skyway_config_snowflake.json` | Snowflake |
 | `orm_skyway_config_mac_snowflake.json` | Snowflake, macOS-style paths |
-| `orm_skyway_config_mariadb.json` | MariaDB *(experimental)* |
+| `orm_skyway_config_cockroachdb.json` | CockroachDB |
+| `orm_skyway_config_hana.json` | SAP HANA |
+| `orm_skyway_config_db2.json` | DB2 (LUW) |
 | `orm_skyway_config_databricks.json` | Databricks *(experimental)* |
-| `orm_skyway_config_spanner.json` | Google Cloud Spanner *(experimental)* |
+| `orm_skyway_config_mariadb.json` | MariaDB *(experimental)* |
+| `orm_skyway_config_spanner.json` | Spanner (PostgreSQL interface) *(experimental)* |
 | `orm_skyway_config_generic.json` | Any other JDBC-compliant data source — [GENERIC mode](#generic-mode--connecting-to-any-jdbc-data-source) |
 
 Each file includes comments explaining the key settings for that database type.
