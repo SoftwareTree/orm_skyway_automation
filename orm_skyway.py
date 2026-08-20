@@ -68,8 +68,8 @@ import sys
 import textwrap
 from pathlib import Path
 
-__version__ = "1.0.33"
-# Regenerated: 2026-08-19 2:33 PM PDT
+__version__ = "1.0.34"
+# Regenerated: 2026-08-19 5:19 PM PDT
 # This timestamp updates on every regeneration of this file, independent of
 # __version__ above -- __version__ is bumped manually, only once a change has
 # been verified, so multiple regenerations can share the same version number
@@ -1052,7 +1052,27 @@ public class ListTablesHelper {
     }
 }
 """
-
+def _unquote_jdbc_url_for_direct_connection(url: str) -> str:
+    """
+    Strip a single layer of surrounding single quotes from a JDBC URL before
+    handing it to a direct DriverManager.getConnection() call.
+ 
+    The quoted form ('jdbc:...;prop1=val1;prop2=val2') is JDX's own
+    convention for embedding driver-specific connection properties that
+    themselves contain ';' inside the JDX_DATABASE line, so JDX's own
+    parser doesn't mistake those internal ';' characters for its own field
+    separators. Plain JDBC's DriverManager has no concept of this quoting
+    and will fail with "No suitable driver found" if handed the quoted
+    string verbatim — so any of orm_skyway.py's own direct JDBC connections
+    (table listing, JDXTestConnection/JDXMetadata pre-create) must use the
+    unquoted form, while cfg["jdbc_url"] / cfg["effective_jdbc_url"] must
+    keep the quoted form as-is for the generated JDX_DATABASE line, which
+    JDX's own parser reads and does understand.
+    """
+    if len(url) >= 2 and url.startswith("'") and url.endswith("'"):
+        return url[1:-1]
+    return url
+ 
 def list_tables_via_java(cfg: dict) -> list:
     info("Connecting to database to retrieve table list ...")
 
@@ -1077,7 +1097,8 @@ def list_tables_via_java(cfg: dict) -> list:
         # Pass effective_schema as arg 4 — resolved in collect_inputs; for Postgres
         # this may be extracted from currentSchema= in the URL when db_schema is blank.
         cmd = _java_cmd_prefix(cfg) + ["-cp", cp, "ListTablesHelper",
-               cfg["jdbc_url"], cfg["db_user"], cfg["db_password"],
+               _unquote_jdbc_url_for_direct_connection(cfg["jdbc_url"]),
+               cfg["db_user"], cfg["db_password"],
                cfg.get("url_db_type", "")]
         if cfg.get("effective_schema"):
             cmd.append(cfg["effective_schema"])
@@ -1173,7 +1194,8 @@ def ensure_jdxtestconnection(cfg: dict):
             sys.exit(1)
 
         # Use effective_jdbc_url so Postgres currentSchema= is honoured
-        _url = cfg.get("effective_jdbc_url") or cfg["jdbc_url"]
+        _url = _unquote_jdbc_url_for_direct_connection(
+            cfg.get("effective_jdbc_url") or cfg["jdbc_url"])
         cmd = _java_cmd_prefix(cfg) + ["-cp", cp, "CreateTestConnectionHelper",
                _url, cfg["db_user"], cfg["db_password"],
                cfg.get("url_db_type", "")]
@@ -1529,12 +1551,24 @@ def generate_template_config(cfg: dict, table_class_map: dict) -> Path:
     # compatible with the CData driver. ReadOnly=True makes the driver reject
     # those statements outright instead of executing the destructive half.
     if cfg.get("url_db_type") == "EXCEL" and "readonly=" not in _jdx_url.lower():
-        _sep = "&" if "?" in _jdx_url and ";" not in _jdx_url else ";"
-        _jdx_url = _jdx_url.rstrip(";") + f"{_sep}ReadOnly=True"
+        # Handle both the plain and quoted forms of _jdx_url. The quoted
+        # form ('jdbc:...;prop=val;') is JDX's own convention for protecting
+        # ';'-separated properties from JDX_DATABASE's own field separator
+        # (see _unquote_jdbc_url_for_direct_connection) -- CData's JDBC URLs
+        # are natively ';'-separated property lists, so Excel/CData users
+        # with more than one URL property are the most likely to need this
+        # form. The injected property must land INSIDE the closing quote,
+        # or it ends up as a bare, unquoted trailer that JDX's JDX_DATABASE
+        # parser would misread as one of its own top-level fields.
+        _quoted = (_jdx_url.startswith("'") and _jdx_url.endswith("'")
+                   and len(_jdx_url) >= 2)
+        _core = _jdx_url[1:-1] if _quoted else _jdx_url
+        _sep = "&" if "?" in _core and ";" not in _core else ";"
+        _core = _core.rstrip(";") + f"{_sep}ReadOnly=True"
+        _jdx_url = f"'{_core}'" if _quoted else _core
         verbose_info("Excel/CData JDBC URL: added ReadOnly=True by default "
                      "(prevents JDX schema-init from DROP/CREATE-ing the sheet; "
                      "set ReadOnly=False explicitly in jdbc_url if you need write access).")
-
     jdx_db_line = (
         f"JDX_DATABASE JDX:{_jdx_url};"
         f"USER={jdx_user};PASSWORD={jdx_password};"
@@ -3085,7 +3119,8 @@ def ensure_jdxmetadata_table_excel(cfg: dict):
 
         # Use effective_jdbc_url so any schema-qualification is honoured,
         # consistent with ensure_jdxtestconnection.
-        _url = cfg.get("effective_jdbc_url") or cfg["jdbc_url"]
+        _url = _unquote_jdbc_url_for_direct_connection(
+            cfg.get("effective_jdbc_url") or cfg["jdbc_url"])
         cmd = _java_cmd_prefix(cfg) + ["-cp", cp, "CreateJdxMetadataHelper",
                _url, cfg["db_user"], cfg["db_password"]]
         ret = subprocess.run(cmd, capture_output=True, text=True)
