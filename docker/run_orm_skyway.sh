@@ -26,6 +26,19 @@
 # Colima — without it, host.docker.internal does not resolve and Phase 1
 # cannot reach a database running on localhost on the host machine.
 #
+# --platform linux/amd64 is required because softwaretree/orm_skyway (built on
+# softwaretree/gilhari) is currently single-architecture (amd64-only). Without
+# it, `docker run` on Apple Silicon (M1/M2/M3/M4) fails outright the first
+# time it needs to pull the image, with a platform-mismatch / "no matching
+# manifest" error, since Docker tries to match the host's arm64 architecture
+# by default and no arm64 build of this image exists. With --platform
+# linux/amd64 set explicitly, Docker Desktop instead pulls (or reuses) the
+# amd64 image and runs it correctly via Rosetta 2 emulation, with a small
+# performance overhead. On Intel Macs, Linux (amd64), and Windows this flag
+# is a no-op — those hosts are amd64 already. See the same note for the
+# per-project Gilhari image this tool generates:
+# docs/gilhari_microservice_packaging.md#apple-silicon-platform-note
+#
 # SQLite (or other file-based) database NOT under your project directory:
 #   The "$(pwd):/project" mount above covers any path inside (or below) the
 #   directory you run this script from -- e.g. a DB at ./config/mydb.sqlite
@@ -57,6 +70,7 @@ if [ -n "$ORM_SKYWAY_EXTRA_MOUNT" ]; then
 fi
 
 exec docker run --rm -it \
+    --platform linux/amd64 \
     --add-host=host.docker.internal:host-gateway \
     -v "$(pwd):/project" \
     -e "ORM_SKYWAY_HOST_PROJECT_DIR=$(pwd)" \

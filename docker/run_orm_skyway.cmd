@@ -32,6 +32,13 @@ REM                                                named pipe (//./pipe/docker_e
 REM                                                is only for native Windows
 REM                                                containers, not applicable here.
 REM
+REM --platform linux/amd64:
+REM   softwaretree/orm_skyway (built on softwaretree/gilhari) is currently
+REM   single-architecture (amd64-only). This is a no-op on standard x86_64
+REM   Windows, included here only for consistency with run_orm_skyway.sh,
+REM   where it matters on Apple Silicon Macs (avoids a platform-mismatch pull
+REM   error) -- see the comment in that script for details.
+REM
 REM SQLite (or other file-based) database NOT under your project directory:
 REM   The %cd%:/project mount above covers any path inside (or below) the
 REM   directory you run this script from -- e.g. a DB at .\config\mydb.sqlite
@@ -57,6 +64,7 @@ set "EXTRA_MOUNT_FLAG="
 if defined ORM_SKYWAY_EXTRA_MOUNT set "EXTRA_MOUNT_FLAG=-v "%ORM_SKYWAY_EXTRA_MOUNT%""
 
 docker run --rm -it ^
+    --platform linux/amd64 ^
     -v "%cd%:/project" ^
     -v "/var/run/docker.sock:/var/run/docker.sock" ^
     -e "ORM_SKYWAY_HOST_PROJECT_DIR=%cd%" ^
