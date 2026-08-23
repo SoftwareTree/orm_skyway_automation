@@ -1,6 +1,6 @@
 # Docker Mode — Run with Zero Local Prerequisites
 
-_Last updated: 2026-07-16 PDT_
+_Last updated: 2026-08-23 1:07 PM PDT_
 
 ← [README](../README.md)
 
@@ -24,7 +24,20 @@ Docker mode replaces the first three with one: **Docker**. The `softwaretree/orm
 
 ## One-time setup
 
-This image is not (yet) published on Docker Hub — every collaborator builds it themselves, once, from a clone of this repository:
+`softwaretree/orm_skyway` is published on Docker Hub — most people don't need to build anything:
+
+```bat
+docker pull softwaretree/orm_skyway
+```
+```bash
+docker pull softwaretree/orm_skyway
+```
+
+Even this manual pull is optional — `docker/run_orm_skyway.cmd`/`.sh` (see [Day-to-day usage](#day-to-day-usage) below) pull the image automatically the first time you run them, so in practice you can usually skip straight there.
+
+> **Apple Silicon (M1/M2/M3/M4):** `softwaretree/orm_skyway` is currently amd64-only, since it's built on `softwaretree/gilhari`, which is itself amd64-only. `docker/run_orm_skyway.sh` already passes `--platform linux/amd64` for you, so day-to-day usage works out of the box under Rosetta 2 emulation. If you ever pull the image directly yourself (as above) instead of via the wrapper script, add `--platform linux/amd64` to avoid a platform-mismatch error: `docker pull --platform linux/amd64 softwaretree/orm_skyway`.
+
+**Prefer to build it yourself instead?** That only makes sense if you're modifying `orm_skyway.py`, the `Dockerfile`, or `docker-entrypoint.sh` and want to test your changes, or if your network can't reach Docker Hub but you already have this repo. It does **not** get you a native ARM64 image on Apple Silicon — a locally-built image is still amd64-only, same as the published one, since the `softwaretree/gilhari` base image it builds on is itself amd64-only.
 
 ```bat
 :: from anywhere — build.cmd finds the repo root itself
@@ -35,9 +48,9 @@ docker\build.cmd
 ./docker/build.sh
 ```
 
-(Everything needed — `Dockerfile`, `docker-entrypoint.sh`, `LICENSE_AGREEMENT.txt`, and `orm_skyway.py` — is already in this one repository; `orm_skyway.py` lives at the repo root so non-Docker users can grab just that one file, while the Docker-specific pieces live in `docker/`.) Once a private Docker Hub repository is set up, this step becomes a `docker pull` instead, and most collaborators won't need to build at all — the day-to-day usage below won't change either way.
+(Everything needed — `Dockerfile`, `docker-entrypoint.sh`, `LICENSE_AGREEMENT.txt`, and `orm_skyway.py` — is already in this one repository; `orm_skyway.py` lives at the repo root so non-Docker users can grab just that one file, while the Docker-specific pieces live in `docker/`.)
 
-> **macOS/Linux:** if you get `permission denied`, the executable bit was likely lost in transit (e.g. zipped on Windows, emailed). Either run `bash docker/build.sh` instead, or fix it once with `chmod +x docker/build.sh docker/run_orm_skyway.sh`.
+> **macOS/Linux:** if you get `permission denied` running `build.sh`, the executable bit was likely lost in transit (e.g. zipped on Windows, emailed). Either run `bash docker/build.sh` instead, or fix it once with `chmod +x docker/build.sh docker/run_orm_skyway.sh`.
 
 ---
 
@@ -55,10 +68,11 @@ C:\tools\orm_skyway_automation\docker\run_orm_skyway.cmd -f orm_skyway_config.js
 ~/tools/orm_skyway_automation/docker/run_orm_skyway.sh -f orm_skyway_config.json --phase 1+3
 ```
 
-Same config file, same flags, same interactive prompts as the standard workflow — see [Phase 1](begin_reverse_engineering.md), [Phase 2](orm_refinement.md), and [Phase 3](gilhari_microservice_packaging.md) for what each step does; none of that changes. `run_orm_skyway.sh`/`.cmd` just wraps `docker run` with the mounts the tool needs:
+Same config file, same flags, same interactive prompts as the standard workflow — see [Phase 1](begin_reverse_engineering.md), [Phase 2](orm_refinement.md), and [Phase 3](gilhari_microservice_packaging.md) for what each step does; none of that changes. `run_orm_skyway.sh`/`.cmd` just wraps `docker run` with the mounts (and platform flag) the tool needs:
 
 - your project directory, so generated files land where you expect
 - the Docker socket, so Phase 3's `docker build` can run from inside the container, building on your host's Docker daemon
+- `--platform linux/amd64`, so it works correctly on Apple Silicon (see the note above) — a no-op on other platforms
 - (Linux/Colima only) `host.docker.internal` host-gateway resolution
 
 ---
