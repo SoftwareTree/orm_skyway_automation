@@ -13,10 +13,16 @@
 # level up) since orm_skyway.py lives there, not in docker/ -- see the
 # comment at the top of Dockerfile for why. cd "$(dirname "$0")/.." makes
 # this work correctly regardless of where it's invoked from.
+#
+# CHANGED 2026-09-09: added --pull to the docker build below -- see
+# build.cmd's matching comment for why (this image is built FROM
+# softwaretree/gilhari, so without --pull a build can silently reuse a
+# stale cached copy of that base image instead of picking up a newer one
+# published to Docker Hub).
 # ==============================================================================
 set -e
 cd "$(dirname "$0")/.."
 docker buildx version >/dev/null 2>&1 || \
     echo "Note: a 'legacy builder is deprecated' warning below (if shown) is harmless."
-docker build -f docker/Dockerfile -t softwaretree/orm_skyway:latest .
+docker build --pull -f docker/Dockerfile -t softwaretree/orm_skyway:latest .
 docker images softwaretree/orm_skyway
