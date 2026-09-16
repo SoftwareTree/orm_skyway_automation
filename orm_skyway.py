@@ -69,7 +69,7 @@ import textwrap
 from pathlib import Path
 
 __version__ = "1.0.34"
-# Regenerated: 2026-08-19 5:19 PM PDT
+# Regenerated: 2026-09-15 7:22 PM PDT
 # This timestamp updates on every regeneration of this file, independent of
 # __version__ above -- __version__ is bumped manually, only once a change has
 # been verified, so multiple regenerations can share the same version number
@@ -3519,7 +3519,7 @@ Once connected, try asking your AI agent:
 | `GILHARI_NAME` | `{image_name}` | Container name for auto-start |
 | `GILHARI_IMAGE` | `{image_name}:{image_tag}` | Docker image for auto-start |
 | `GILHARI_PORT` | `{host_port}` | Port for auto-start |
-| `READONLY_MODE` | `True` (set explicitly below — ormcp-server's own default if unset is currently `False`) | Set `False` to allow write operations (create, update, delete) |
+| `READONLY_MODE` | `True` (matches ormcp-server's own default as of 0.6.8; set explicitly below for clarity) | Set `False` to allow write operations (create, update, delete) |
 | `GILHARI_TIMEOUT` | `30` (default) | API timeout in seconds |
 | `LOG_LEVEL` | `INFO` (default) | `DEBUG`, `INFO`, `WARNING`, or `ERROR` |
 
