@@ -69,7 +69,7 @@ import textwrap
 from pathlib import Path
 
 __version__ = "1.0.34"
-# Regenerated: 2026-09-15 7:22 PM PDT
+# Regenerated: 2026-09-26 12:48 AM PDT
 # This timestamp updates on every regeneration of this file, independent of
 # __version__ above -- __version__ is bumped manually, only once a change has
 # been verified, so multiple regenerations can share the same version number
@@ -514,6 +514,14 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
         cfg["db_type"] = "MSACCESS"
         verbose_info("JDX_DBTYPE defaulted to MSACCESS for Excel (experimental — "
                      "override with --db-type if this doesn't resolve cleanly).")
+    elif "jdbc:splunk:" in url_lower:
+        # CData JDBC driver for Splunk (2026-09-26): JDX has no Splunk-specific
+        # DB type, and GENERIC was confirmed to work in the Splunk test rounds
+        # (20-22). url_db_type stays "" so all script-internal routing is the
+        # same generic path as before; only the prompt is avoided.
+        cfg["db_type"] = "GENERIC"
+        verbose_info("JDX_DBTYPE defaulted to GENERIC for a jdbc:splunk: URL "
+                     "(override with --db-type if needed).")
     elif cfg["url_db_type"]:
         cfg["db_type"] = cfg["url_db_type"]
     else:
@@ -647,6 +655,22 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
     # A value from the config file or CLI flag is only accepted if it is non-empty;
     # an empty string in the config file is treated the same as a missing value.
     _creds_required = cfg["url_db_type"] != "SQLITE"
+
+    # Some drivers (e.g. CData: jdbc:splunk:User=...;Password=...;...) carry the
+    # credentials inside the JDBC URL itself. If db_user / db_password are not set
+    # (or blank) and the URL has User= / Password= properties, take them from the
+    # URL so --yes mode does not demand duplicate values, and JDX/the helper
+    # classes still receive the same credentials the URL specifies (2026-09-26).
+    if phase1_needed:
+        _url_user     = _jdbc_url_property(cfg["jdbc_url"], "user")
+        _url_password = _jdbc_url_property(cfg["jdbc_url"], "password")
+        if not args.db_user and _url_user:
+            args.db_user = _url_user
+            info("db_user not set; using the User value from the JDBC URL.")
+        if not args.db_password and _url_password:
+            args.db_password = _url_password
+            info("db_password not set; using the Password value from the JDBC URL.")
+
     if phase1_needed:
         # args.db_user is None when not in config/CLI; "" means explicitly set to blank.
         # In --yes mode or when creds not required, accept "" without prompting.
@@ -933,6 +957,14 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
     else:
         verbose_info(f"Docker platform (default): {cfg['docker_platform']}")
 
+    # Base image for the generated gilhari/Dockerfile (2026-09-26). Defaults to
+    # softwaretree/gilhari; set e.g. softwaretree/gilhari:jdx528-dev to test a
+    # development JDX build without hand-editing the Dockerfile after Phase 3.
+    cfg["gilhari_base_image"] = ((getattr(args, "gilhari_base_image", None) or "").strip()
+                                 or "softwaretree/gilhari")
+    if cfg["gilhari_base_image"] != "softwaretree/gilhari":
+        info(f"Gilhari base image (from config/CLI): {cfg['gilhari_base_image']}")
+
     # Optional fixed MAC address for the container (node-locked JDBC driver
     # licenses, e.g. CData). No default — only passed to `docker run` if set.
     cfg["docker_mac_address"] = (getattr(args, "docker_mac_address", None) or "").strip()
@@ -946,10 +978,20 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
     if cfg["docker_hostname"]:
         verbose_info(f"Docker container hostname (pinned): {cfg['docker_hostname']}")
 
-    if cfg.get("url_db_type") == "EXCEL" and not (cfg["docker_mac_address"] and cfg["docker_hostname"]):
-        warn("Excel/CData: confirmed (2026-07-14) that the CData driver's license check requires the "
-             "container's hostname AND MAC address to match your ACTUAL HOST MACHINE'S real values — not "
-             "just any fixed/consistent values. Set both explicitly before running Phase 3:")
+    # CData JDBC drivers (Excel, Splunk, ...) are node-locked: the license check uses
+    # the container's hostname AND MAC address, and Docker assigns a new random MAC
+    # (and, by default, hostname) per container. Without both pinned, the service
+    # starts and even reports healthy, but every data request fails with a license
+    # error (seen with the CData Splunk driver, 2026-09-19).
+    _is_cdata = (cfg.get("url_db_type") == "EXCEL"
+                 or "jdbc:splunk:" in cfg.get("jdbc_url", "").lower()
+                 or "cdata" in (cfg.get("jdbc_driver_class") or "").lower())
+    if _is_cdata and not (cfg["docker_mac_address"] and cfg["docker_hostname"]):
+        warn("CData JDBC driver: its license is node-locked to a hostname AND MAC address, so the "
+             "container's --hostname and --mac-address must be pinned or every data request fails "
+             "(while the health check still reports healthy). For the Excel driver this was confirmed "
+             "(2026-07-14) to require your ACTUAL HOST MACHINE'S real values, not just any fixed values. "
+             "Set both explicitly before running Phase 3:")
         warn("  --docker-hostname <your machine's hostname>   (Windows: run `hostname` or check %COMPUTERNAME%)")
         warn("  --docker-mac-address <your machine's MAC>      (Windows: run `getmac /v`)")
         warn("...or re-run Phase 3 after setting docker_hostname/docker_mac_address in your config file.")
@@ -1052,6 +1094,25 @@ public class ListTablesHelper {
     }
 }
 """
+def _jdbc_url_property(url: str, name: str) -> str:
+    """
+    Return the value of a name=value property embedded in a JDBC URL (case-
+    insensitive name), or "" if absent. Handles ';'-separated properties
+    (CData style: jdbc:splunk:User=admin;Password=x;URL=...), '?'/'&' query
+    parameters (jdbc:postgresql://host/db?user=x&password=y), JDX's quoted-URL
+    form, and a value wrapped in single or double quotes.
+    """
+    import re as _re
+    _u = _unquote_jdbc_url_for_direct_connection(url or "")
+    m = _re.search(r'(?:^|[:;?&])\s*' + _re.escape(name) + r'\s*=\s*([^;&]*)', _u, _re.IGNORECASE)
+    if not m:
+        return ""
+    val = m.group(1).strip()
+    if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"'):
+        val = val[1:-1]
+    return val
+
+
 def _unquote_jdbc_url_for_direct_connection(url: str) -> str:
     """
     Strip a single layer of surrounding single quotes from a JDBC URL before
@@ -1136,6 +1197,19 @@ public class CreateTestConnectionHelper {
         String dbType = args.length > 3 ? args[3].toUpperCase() : "";
 
         Connection con = DriverManager.getConnection(url, user, pass);
+        // A read-only source (e.g. CData's Splunk driver) cannot hold JDX's
+        // helper tables; report it and let the caller skip this step.
+        boolean readOnly = false;
+        try {
+            readOnly = con.isReadOnly();
+        } catch (SQLException ex) {
+            readOnly = false;
+        }
+        if (readOnly) {
+            con.close();
+            System.out.println("READ_ONLY");
+            return;
+        }
         // Pre-create JDXTestConnection to avoid a JDX bug on PostgreSQL where
         // a failed SELECT on a missing table leaves an aborted transaction open,
         // blocking the subsequent CREATE TABLE inside JDX.
@@ -1163,7 +1237,7 @@ public class CreateTestConnectionHelper {
 """
 
 
-def ensure_jdxtestconnection(cfg: dict):
+def ensure_jdxtestconnection(cfg: dict) -> bool:
     """
     Pre-create JDXTestConnection table before invoking JDXSchema -metaForceCreate.
 
@@ -1175,6 +1249,10 @@ def ensure_jdxtestconnection(cfg: dict):
     For most DB types, uses `CREATE TABLE IF NOT EXISTS` which is a silent no-op
     when the table already exists. For MSSQL, which does not support that syntax,
     uses a metadata existence check before creating.
+
+    Returns False (without creating anything) if the connection reports itself
+    read-only, e.g. CData's Splunk driver; JDX's helper tables cannot be
+    created there, and the caller skips JDXMetadata creation as well.
     """
     tmp = cfg["project_root"] / ".tmp_helper"
     tmp.mkdir(parents=True, exist_ok=True)
@@ -1204,7 +1282,10 @@ def ensure_jdxtestconnection(cfg: dict):
             error("Could not create JDXTestConnection table.")
             error(ret.stderr)
             sys.exit(1)
+        if ret.stdout and "READ_ONLY" in ret.stdout:
+            return False
         verbose_info(ret.stdout.strip() if ret.stdout else "")
+        return True
     finally:
         if tmp.exists():
             shutil.rmtree(str(tmp))
@@ -2467,7 +2548,7 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         f"# Generated by orm_skyway.py",
         f"# Builds on the base Gilhari image (REST server pre-installed).",
         f"ARG BASE_PLATFORM={cfg['docker_platform']}",
-        f"FROM --platform=${{BASE_PLATFORM}} softwaretree/gilhari",
+        f"FROM --platform=${{BASE_PLATFORM}} {cfg.get('gilhari_base_image') or 'softwaretree/gilhari'}",
         f"",
         f"WORKDIR /opt/{image_name}",
         f"",
@@ -2925,6 +3006,10 @@ def build_arg_parser():
                                                 "(default: linux/amd64 — softwaretree/gilhari is currently "
                                                 "single-arch; override only if you have a genuinely "
                                                 "multi-arch build to target)")
+    p.add_argument("--gilhari-base-image", help="Base image for the generated gilhari/Dockerfile "
+                                                 "(default: softwaretree/gilhari). Set e.g. "
+                                                 "softwaretree/gilhari:jdx528-dev to build the service on a "
+                                                 "development JDX build.")
     p.add_argument("--docker-hostname", help="Fixed hostname to assign the container via 'docker run "
                                               "--hostname' (default: the image name). For CData's Excel "
                                               "driver, confirmed necessary (2026-07-14) AND must be set to "
@@ -3235,8 +3320,11 @@ def run_phase1(cfg: dict, args) -> tuple:
     # mapping file on startup and requires compiled .class files in bin/.
     # Only attempted if reverse-engineering and compilation both ran in this session.
     if jdx_path and compiled:
-        ensure_jdxtestconnection(cfg)
-        ensure_jdxmetadata_via_jdxschema(cfg, jdx_path, all_tables)
+        if ensure_jdxtestconnection(cfg):
+            ensure_jdxmetadata_via_jdxschema(cfg, jdx_path, all_tables)
+        else:
+            info("The database connection is read-only; skipping creation of the JDXTestConnection "
+                 "and JDXMetadata tables (not needed when the mapping is read from the .jdx file).")
     elif jdx_path and not compiled:
         warn("Skipping JDXMetadata creation — compiled classes required but compilation was skipped.")
         warn(f"Run {SCRIPTS_DIR}/compile.bat / compile.sh, then re-run Phase 1 or call JDXSchema -metaForceCreate manually.")
@@ -4390,6 +4478,7 @@ def main():
             "embed_db_file_in_microservice": "embed_db_file_in_microservice",
             "credentials_via_env": "credentials_via_env",
             "docker_platform":   "docker_platform",
+            "gilhari_base_image": "gilhari_base_image",
             "docker_mac_address": "docker_mac_address",
             "docker_hostname":   "docker_hostname",
             "jdx_debug_level":   "jdx_debug_level",
