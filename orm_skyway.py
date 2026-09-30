@@ -68,8 +68,8 @@ import sys
 import textwrap
 from pathlib import Path
 
-__version__ = "1.0.34"
-# Regenerated: 2026-09-26 12:48 AM PDT
+__version__ = "1.0.35"
+# Regenerated: 2026-09-30 2:22 AM PDT
 # This timestamp updates on every regeneration of this file, independent of
 # __version__ above -- __version__ is bumped manually, only once a change has
 # been verified, so multiple regenerations can share the same version number
@@ -978,6 +978,20 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
     if cfg["docker_hostname"]:
         verbose_info(f"Docker container hostname (pinned): {cfg['docker_hostname']}")
 
+    # Docker network for the service container. A pinned MAC address is shared
+    # by every service built for the same node-locked license, and two
+    # containers with the same MAC on ONE Docker network lose connections
+    # intermittently (health checks included) -- isolated in Splunk round 23,
+    # 2026-09-29: 0 losses with a different MAC or a separate network, ~20%
+    # with the same MAC on the default bridge. So when a MAC is pinned, each
+    # service gets its own user-defined bridge network by default. Port
+    # publishing (-p) and host.docker.internal work the same on it.
+    # The default name (<image name>-net) is resolved in Phase 3, where the
+    # image name is final; here only an explicit value is recorded.
+    cfg["docker_network"] = (getattr(args, "docker_network", None) or "").strip()
+    if cfg["docker_network"]:
+        verbose_info(f"Docker network for the service container (from config/CLI): {cfg['docker_network']}")
+
     # CData JDBC drivers (Excel, Splunk, ...) are node-locked: the license check uses
     # the container's hostname AND MAC address, and Docker assigns a new random MAC
     # (and, by default, hostname) per container. Without both pinned, the service
@@ -989,11 +1003,13 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
     if _is_cdata and not (cfg["docker_mac_address"] and cfg["docker_hostname"]):
         warn("CData JDBC driver: its license is node-locked to a hostname AND MAC address, so the "
              "container's --hostname and --mac-address must be pinned or every data request fails "
-             "(while the health check still reports healthy). For the Excel driver this was confirmed "
-             "(2026-07-14) to require your ACTUAL HOST MACHINE'S real values, not just any fixed values. "
-             "Set both explicitly before running Phase 3:")
-        warn("  --docker-hostname <your machine's hostname>   (Windows: run `hostname` or check %COMPUTERNAME%)")
-        warn("  --docker-mac-address <your machine's MAC>      (Windows: run `getmac /v`)")
+             "(while the health check still reports healthy). Use the hostname and MAC address that "
+             "were in effect when the license was ACTIVATED: if you activated it on your host machine "
+             "(the usual case for the Excel driver), those are your host machine's real values "
+             "(Windows: `hostname` / `getmac /v`); if you activated it inside a container, they are "
+             "that container's pinned values. Any other pair fails with 'installed but not activated'. "
+             "Set both before running Phase 3:")
+        warn("  --docker-hostname <hostname at activation>   --docker-mac-address <MAC at activation>")
         warn("...or re-run Phase 3 after setting docker_hostname/docker_mac_address in your config file.")
 
     # JDX's own DEBUG_LEVEL, written into both the Phase 1 .jdx and Phase 3
@@ -1111,6 +1127,22 @@ def _jdbc_url_property(url: str, name: str) -> str:
     if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"'):
         val = val[1:-1]
     return val
+
+
+def _strip_jdbc_url_credentials(url: str) -> str:
+    """
+    Remove user= / password= properties (case-insensitive name) from a JDBC
+    URL, in both the ';'-separated form (CData: jdbc:splunk:URL=...;User=a;
+    Password=b;) and the '?'/'&' query form (jdbc:postgresql://h/db?user=a&
+    password=b). Only an exact property name matches: Username=, ProxyUser=
+    and the like are left alone. Used for the .docker.jdx when
+    credentials_via_env is on, so no credential is baked into the image.
+    """
+    import re as _re
+    _out = _re.sub(r'(?i)(?<=[:;?&])\s*(?:user|password)\s*=[^;&\']*[;&]?', '', url or "")
+    # A query string left empty or ending in a separator: tidy it up.
+    _out = _re.sub(r'[?&]+(?=\'?$)', '', _out)
+    return _out
 
 
 def _unquote_jdbc_url_for_direct_connection(url: str) -> str:
@@ -2265,13 +2297,37 @@ def create_docker_jdx(cfg: dict, config_path: Path) -> Path:
     # aren't supplied; see gilhari/run_docker_app.cmd/.sh). When the flag is
     # off (default), behavior is unchanged from before this feature existed:
     # real credentials are written into .docker.jdx as they always were.
+    #
+    # Drivers that carry credentials inside the JDBC URL itself (CData:
+    # jdbc:splunk:...;User=...;Password=...;) would still leak them through
+    # the URL, so User=/Password= properties are also removed from the URL
+    # part of the JDX_DATABASE line. The driver then receives the credentials
+    # only through JDX's user/password (from JDX_DB_USER / JDX_DB_PASSWORD).
+    # Only the .docker.jdx is changed; the working .jdx keeps the full URL
+    # for host-side tools (2026-09-29).
     if cfg.get("credentials_via_env", False):
         import re as _re4
+        _new_lines = []
+        _stripped_url_creds = False
+        for _line in docker_text.splitlines(keepends=True):
+            if _line.lstrip().startswith("JDX_DATABASE "):
+                _i = _line.rfind(";USER=")          # JDX's own USER= (after the URL)
+                if _i > 0:
+                    _url_part, _rest = _line[:_i], _line[_i:]
+                    _url_clean = _strip_jdbc_url_credentials(_url_part)
+                    if _url_clean != _url_part:
+                        _stripped_url_creds = True
+                    _line = _url_clean + _rest
+            _new_lines.append(_line)
+        docker_text = "".join(_new_lines)
         docker_text = _re4.sub(
             r'USER=[^;]*;PASSWORD=[^;]*;',
             'USER=set_via_JDX_DB_USER_env;PASSWORD=set_via_JDX_DB_PASSWORD_env;',
             docker_text
         )
+        if _stripped_url_creds:
+            info("credentials_via_env: User=/Password= removed from the JDBC URL in "
+                 f"{docker_jdx.name}; the container gets them only from JDX_DB_USER / JDX_DB_PASSWORD.")
 
     docker_jdx.write_text(docker_text, encoding="utf-8")
     return docker_jdx
@@ -2512,12 +2568,13 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
     service_cfg = {}
     if cfg.get("credentials_via_env", False):
         service_cfg["_comment_credentials"] = (
-            "Do NOT add db_user / db_password (or similarly named credential) fields to this file. "
-            "Gilhari's REST server does support reading them from here, but this file is ADD'd into "
-            "the Docker image (see Dockerfile) and would bake real credentials into an image layer -- "
-            "the exact leak this generator avoids for config/*.docker.jdx. Use the JDX_DB_USER / "
-            "JDX_DB_PASSWORD environment variables at `docker run` time instead; JDX overrides the "
-            "connection's user/password from those at runtime, and they're never baked into the image."
+            "Do NOT add db_username / db_password fields to this file. Gilhari's REST server does "
+            "read them from here, but this file is ADD'd into the Docker image (see Dockerfile) and "
+            "would bake real credentials into an image layer -- the exact leak this generator avoids "
+            "for config/*.docker.jdx. Use the JDX_DB_USER / JDX_DB_PASSWORD environment variables at "
+            "`docker run` time instead; they're never baked into the image. Precedence (Gilhari "
+            "0.8.8+): environment variables, then db_username / db_password here, then the "
+            "USER / PASSWORD in the ORM specification."
         )
     service_cfg.update({
         "gilhari_microservice_name":       image_name,
@@ -2691,6 +2748,30 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
     # --mac-address is only added if explicitly configured (same reasoning).
     _hostname_value = cfg.get("docker_hostname") or image_name
     _identity_flags_cmd = f' --hostname {_hostname_value}'
+
+    # Per-service Docker network when a MAC address is pinned (see the
+    # docker_network note in collect_inputs): containers sharing a pinned MAC
+    # must not share a network. "bridge"/"default" opts back into Docker's
+    # default bridge. The launcher creates the network if it doesn't exist.
+    _net = (cfg.get("docker_network") or "").strip()
+    _net_note = "Docker network for this service (created if missing)"
+    if not _net and cfg.get("docker_mac_address"):
+        _net = f"{image_name}-net"
+        _net_note = ("Own Docker network: containers sharing a pinned MAC address "
+                     "must not share a network (created if missing)")
+    if _net.lower() in ("bridge", "default"):
+        _net = ""
+    _network_flag = f" --network {_net}" if _net else ""
+    _network_create_cmd = (
+        f"REM {_net_note}\r\n"
+        f"docker network inspect {_net} >nul 2>&1 || docker network create {_net} >nul\r\n"
+    ) if _net else ""
+    _network_create_sh = (
+        f"# {_net_note}\n"
+        f"docker network inspect {_net} > /dev/null 2>&1 || docker network create {_net} > /dev/null\n"
+    ) if _net else ""
+    if _net:
+        info(f"Service container network: {_net}  (created by run_docker_app if missing)")
     if cfg.get("docker_mac_address"):
         _identity_flags_cmd += f' --mac-address {cfg["docker_mac_address"]}'
     # Oracle: any JDBC operation touching Oracle's data dictionary (e.g. LONG
@@ -2757,13 +2838,15 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         _selflocate_sh  = 'cd "$(dirname "$0")/.."\n'
         _creds_flags_cmd = f' --env-file {_env_file_rel} -e JDX_DB_USER -e JDX_DB_PASSWORD'
         _creds_flags_sh  = f' --env-file {_env_file_rel} -e JDX_DB_USER -e JDX_DB_PASSWORD'
+        # Phase 3 always writes the env file (as an empty template), so the
+        # check is for a non-empty value in it, not just for the file.
         _creds_warn_cmd = (
-            f'if not exist "{_env_file_rel}" if "%JDX_DB_USER%"=="" echo WARNING: Neither {_env_file_rel} nor JDX_DB_USER is set -- the container will fail to authenticate to the database.\r\n'
-            f'if not exist "{_env_file_rel}" if "%JDX_DB_PASSWORD%"=="" echo WARNING: Neither {_env_file_rel} nor JDX_DB_PASSWORD is set -- the container will fail to authenticate to the database.\r\n'
+            f'findstr /R /C:"^JDX_DB_USER=." "{_env_file_rel}" >nul 2>&1 || if "%JDX_DB_USER%"=="" echo WARNING: JDX_DB_USER is set neither in {_env_file_rel} nor in the environment -- the container will fail to authenticate to the database.\r\n'
+            f'findstr /R /C:"^JDX_DB_PASSWORD=." "{_env_file_rel}" >nul 2>&1 || if "%JDX_DB_PASSWORD%"=="" echo WARNING: JDX_DB_PASSWORD is set neither in {_env_file_rel} nor in the environment -- the container will fail to authenticate to the database.\r\n'
         )
         _creds_warn_sh = (
-            f'if [ ! -f "{_env_file_rel}" ] && [ -z "$JDX_DB_USER" ]; then echo "⚠ Neither {_env_file_rel} nor JDX_DB_USER is set -- the container will fail to authenticate to the database."; fi\n'
-            f'if [ ! -f "{_env_file_rel}" ] && [ -z "$JDX_DB_PASSWORD" ]; then echo "⚠ Neither {_env_file_rel} nor JDX_DB_PASSWORD is set -- the container will fail to authenticate to the database."; fi\n'
+            f'if [ -z "$JDX_DB_USER" ] && ! grep -Eq "^JDX_DB_USER=.+" "{_env_file_rel}" 2>/dev/null; then echo "⚠ JDX_DB_USER is set neither in {_env_file_rel} nor in the environment -- the container will fail to authenticate to the database."; fi\n'
+            f'if [ -z "$JDX_DB_PASSWORD" ] && ! grep -Eq "^JDX_DB_PASSWORD=.+" "{_env_file_rel}" 2>/dev/null; then echo "⚠ JDX_DB_PASSWORD is set neither in {_env_file_rel} nor in the environment -- the container will fail to authenticate to the database."; fi\n'
         )
 
     # ── run_docker_app.cmd / run_docker_app.sh ────────────────────────────────
@@ -2781,7 +2864,8 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         f"{_creds_warn_cmd}"
         f"REM Remove any existing container with this name (stopped or running)\r\n"
         f"docker rm -f {image_name} >nul 2>&1\r\n"
-        f"docker run --platform {cfg['docker_platform']}{_identity_flags_cmd}{_creds_flags_cmd} -d --name {image_name}{_mount_flag_cmd} -p {host_port}:{service_port} {image_name}:{image_tag}\r\n"
+        f"{_network_create_cmd}"
+        f"docker run --platform {cfg['docker_platform']}{_identity_flags_cmd}{_network_flag}{_creds_flags_cmd} -d --name {image_name}{_mount_flag_cmd} -p {host_port}:{service_port} {image_name}:{image_tag}\r\n"
         f"\r\n"
         f"echo Waiting for Gilhari microservice to start...\r\n"
         f"echo (This may take up to 3 minutes for cloud or remote databases)\r\n"
@@ -2827,7 +2911,8 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         f"{_creds_warn_sh}"
         f"# Remove any existing container with this name (stopped or running)\n"
         f"docker rm -f {image_name} > /dev/null 2>&1 || true\n"
-        f"docker run --platform {cfg['docker_platform']}{_identity_flags_sh}{_add_host_flag}{_creds_flags_sh} -d --name {image_name}{_mount_flag_sh} -p {host_port}:{service_port} {image_name}:{image_tag}\n"
+        f"{_network_create_sh}"
+        f"docker run --platform {cfg['docker_platform']}{_identity_flags_sh}{_network_flag}{_add_host_flag}{_creds_flags_sh} -d --name {image_name}{_mount_flag_sh} -p {host_port}:{service_port} {image_name}:{image_tag}\n"
         f"\n"
         f"echo \"Waiting for Gilhari microservice to start...\"\n"
         f"echo \"(This may take up to 3 minutes for cloud or remote databases)\"\n"
@@ -3011,19 +3096,27 @@ def build_arg_parser():
                                                  "softwaretree/gilhari:jdx528-dev to build the service on a "
                                                  "development JDX build.")
     p.add_argument("--docker-hostname", help="Fixed hostname to assign the container via 'docker run "
-                                              "--hostname' (default: the image name). For CData's Excel "
-                                              "driver, confirmed necessary (2026-07-14) AND must be set to "
-                                              "your actual host machine's real hostname (Windows: run "
-                                              "`hostname` or check %%COMPUTERNAME%%) — not an arbitrary fixed "
-                                              "value. Required together with --docker-mac-address below.")
+                                              "--hostname' (default: the image name). For node-locked CData "
+                                              "licenses, set it to the hostname in effect when the license "
+                                              "was activated (your host machine's, if activated there — "
+                                              "Windows: `hostname`). Required together with "
+                                              "--docker-mac-address below.")
     p.add_argument("--docker-mac-address", help="Fixed MAC address to assign the container via 'docker run "
                                                  "--mac-address' (e.g. 02:42:ac:11:00:02). Without a fixed "
                                                  "value, Docker assigns a new random MAC to the container on "
-                                                 "every run. For CData's Excel driver, confirmed necessary "
-                                                 "(2026-07-14) AND must be set to your actual host machine's "
-                                                 "real MAC address (Windows: run `getmac /v`) — not an "
-                                                 "arbitrary fixed value. Required together with "
-                                                 "--docker-hostname above.")
+                                                 "every run. For node-locked CData licenses, set it to the MAC "
+                                                 "address in effect when the license was activated (your host "
+                                                 "machine's, if activated there — Windows: `getmac /v`). "
+                                                 "Required together with --docker-hostname above. When set, "
+                                                 "the container also gets its own Docker network (see "
+                                                 "--docker-network).")
+    p.add_argument("--docker-network", help="Docker network for the service container. Default: none (Docker's "
+                                             "default bridge) unless --docker-mac-address is set, in which case "
+                                             "a per-service network named <docker_image_name>-net is created and "
+                                             "used, because two containers with the same MAC address on one "
+                                             "Docker network lose connections intermittently. Set it to share a "
+                                             "network deliberately (e.g. with an ORMCP container), or to "
+                                             "'bridge' to keep the default bridge.")
     return p
 
 
@@ -4481,6 +4574,7 @@ def main():
             "gilhari_base_image": "gilhari_base_image",
             "docker_mac_address": "docker_mac_address",
             "docker_hostname":   "docker_hostname",
+            "docker_network":    "docker_network",
             "jdx_debug_level":   "jdx_debug_level",
             "verbose":           "verbose",
         }
@@ -4540,7 +4634,18 @@ def main():
             # invocation just worked. sys.argv[0] alone (the prior fix) only
             # corrects the script PATH, not the interpreter itself — these
             # are two different things and need two different fixes.
-            print(f"    {sys.executable} {_script_path} -f {args.config_file or 'orm_skyway_config.json'} --phase 3")
+            _cfg_file = args.config_file or 'orm_skyway_config.json'
+            _host_dir = os.environ.get("ORM_SKYWAY_HOST_PROJECT_DIR", "")
+            if _running_in_docker() and _host_dir:
+                # Docker mode: sys.executable/sys.argv[0] are paths inside the
+                # orm_skyway container, which don't exist on the host. Point at
+                # the same wrapper that ran Phase 1 instead.
+                _win = "\\" in _host_dir or (len(_host_dir) > 1 and _host_dir[1] == ":")
+                _wrapper = "run_orm_skyway.cmd" if _win else "./run_orm_skyway.sh"
+                print(f"    (from {_host_dir}, with the same wrapper you used for Phase 1)")
+                print(f"    {_wrapper} -f {_cfg_file} --phase 3")
+            else:
+                print(f"    {sys.executable} {_script_path} -f {_cfg_file} --phase 3")
             return
 
     if run_p3:
