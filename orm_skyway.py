@@ -68,8 +68,8 @@ import sys
 import textwrap
 from pathlib import Path
 
-__version__ = "1.0.35"
-# Regenerated: 2026-09-30 2:22 AM PDT
+__version__ = "1.0.36"
+# Regenerated: 2026-10-03 3:05 AM PDT
 # This timestamp updates on every regeneration of this file, independent of
 # __version__ above -- __version__ is bumped manually, only once a change has
 # been verified, so multiple regenerations can share the same version number
@@ -2569,12 +2569,15 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
     if cfg.get("credentials_via_env", False):
         service_cfg["_comment_credentials"] = (
             "Do NOT add db_username / db_password fields to this file. Gilhari's REST server does "
-            "read them from here, but this file is ADD'd into the Docker image (see Dockerfile) and "
-            "would bake real credentials into an image layer -- the exact leak this generator avoids "
-            "for config/*.docker.jdx. Use the JDX_DB_USER / JDX_DB_PASSWORD environment variables at "
-            "`docker run` time instead; they're never baked into the image. Precedence (Gilhari "
-            "0.8.8+): environment variables, then db_username / db_password here, then the "
-            "USER / PASSWORD in the ORM specification."
+            "read them from here, but this file is ADD'd into the Docker image (see Dockerfile), so "
+            "they would end up in an image layer. With credentials_via_env, ORM_Skyway keeps them "
+            "out of the image: config/*.docker.jdx carries placeholders and no User=/Password= in "
+            "the JDBC URL, and .dockerignore keeps the other ORM files, which do carry them, out "
+            "of the build. Supply the real values at `docker run` time instead, through the "
+            "JDX_DB_USER / JDX_DB_PASSWORD environment variables (gilhari/orm_skyway.env or the "
+            "shell; run_docker_app passes both). Precedence (tested with Gilhari 0.8.9 and JDX "
+            "5.29): environment variables, then db_username / db_password here, then the "
+            "USER / PASSWORD in the ORM specification; empty values are ignored."
         )
     service_cfg.update({
         "gilhari_microservice_name":       image_name,
@@ -2686,30 +2689,57 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
     )
     verbose_info(f"Written: {GILHARI_DIR}/build.cmd / {GILHARI_DIR}/build.sh")
 
-    # ── .dockerignore for file-based DBs ───────────────────────────────────
+    # ── .dockerignore (project root) ───────────────────────────────────────
     # Deliberately stays at project root, NOT in gilhari/ — Docker looks for
     # .dockerignore relative to the build CONTEXT directory, not next to the
     # Dockerfile. Since build.cmd/build.sh use "." (root) as the context and
     # only -f to point at gilhari/Dockerfile, a relocated .dockerignore would
-    # simply be ignored and the DB file/companions would leak into the image.
+    # simply be ignored.
     #
-    # In embed mode: remove any existing .dockerignore that might exclude the
-    # DB file — a leftover from a previous mount-mode run would prevent the
-    # ADD instruction from copying the DB file into the image.
+    # Written on every Phase 3 run (1.0.36). Two parts, inside a marked
+    # block that is regenerated each time; lines outside the block are kept:
+    #
+    # 1. Credentials. The Dockerfile's `ADD config ./config` copies the whole
+    #    config/ directory, but the service reads only the .docker.jdx (plus
+    #    the driver jar, its .lic and classnames_map.json, which must stay).
+    #    The template .config, the working .jdx, the .revjdx and a Phase 1
+    #    "Backup" .config.bak all carry the full JDBC URL with the password,
+    #    so they are excluded from the build context. Splunk round 24 (§7.2)
+    #    found exactly these three files in an image built with
+    #    credentials_via_env on. `config/*.config.jdx` does not match
+    #    `*.config.docker.jdx` (the name ends in .docker.jdx), so the spec the
+    #    service uses is still copied. gilhari/orm_skyway.env and the
+    #    orm_skyway config file are never ADD'd, but they hold credentials
+    #    too, so they are kept out of the build context altogether.
+    #    Applied whether or not credentials_via_env is on: without it the
+    #    .docker.jdx still carries the password, but nothing else needs to.
+    #
+    # 2. File-based database in mount mode: the DB file and its companions
+    #    (provided via the volume mount, not the image). In embed mode this
+    #    part is simply left out -- before 1.0.36 embed mode deleted the
+    #    whole file instead, which would now also drop part 1.
     _dockerignore_path = root / ".dockerignore"
-    if _file_db and _embed:
-        if _dockerignore_path.exists():
-            _dockerignore_path.unlink()
-            info(".dockerignore removed — embed mode requires DB file to be copied into image.")
-    elif _file_db and not _embed:
+    _DI_BEGIN = "# >>> orm_skyway managed block: regenerated by every Phase 3 run; add your own lines outside it"
+    _DI_END   = "# <<< end of orm_skyway managed block"
+    _di_lines = [
+        _DI_BEGIN,
+        "# Files that carry database credentials. The service reads only",
+        f"# {CONFIG_DIR}/*.config.docker.jdx, which is NOT matched by these patterns.",
+        f"{CONFIG_DIR}/*.config",
+        f"{CONFIG_DIR}/*.config.jdx",
+        f"{CONFIG_DIR}/*.config.revjdx",
+        f"{CONFIG_DIR}/*.config.bak",
+        f"{GILHARI_DIR}/orm_skyway.env",
+        "orm_skyway_config.json",
+    ]
+    _di_db_note = ""
+    if _file_db and not _embed:
         _host_dir  = _db_info["host_db_dir"]
         try:
             _rel_dir = _host_dir.relative_to(root)
-            # Exclude all files in the DB directory from the Docker build context
-            _di_entry = str(_rel_dir).replace("\\", "/") + "/*"
         except ValueError:
-            _di_entry = None  # outside project root — nothing to exclude
-        if _di_entry:
+            _rel_dir = None  # outside project root — nothing to exclude
+        if _rel_dir is not None:
             # Exclude only the DB file and its WAL/companion files by pattern,
             # NOT the entire directory — other files in config/ (classnames_map.json,
             # JDBC driver JAR, .docker.jdx etc.) must still be copied into the image.
@@ -2718,8 +2748,7 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
             # Handle db file directly in project root (e.g. ./db.sqlite)
             _prefix = _db_dir_fwd if _db_dir_fwd != "." else ""
             _sep    = "/" if _prefix else ""
-            _di_lines = [
-                "# Auto-generated by orm_skyway.py",
+            _di_lines += [
                 "# File-based database excluded from Docker image (provided via volume mount).",
                 "# Other files in the same directory are still copied into the image.",
                 f"{_prefix}{_sep}{_db_stem}",
@@ -2728,9 +2757,33 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
                 f"{_prefix}{_sep}{_db_stem}.mv.db",
                 f"{_prefix}{_sep}{_db_stem}.trace.db",
             ]
-            _di_content = "\n".join(_di_lines) + "\n"
-            _dockerignore_path.write_text(_di_content, encoding="utf-8")
-            verbose_info(f"Written: .dockerignore  (excludes {_db_stem} and companions)")
+            _di_db_note = f" and {_db_stem} with its companions"
+    _di_lines.append(_DI_END)
+
+    # Keep whatever the user added outside the managed block. A file from
+    # before 1.0.36 (file-DB mode only) was entirely generated -- it starts
+    # with "# Auto-generated by orm_skyway.py" -- and is replaced as a whole.
+    _di_user_lines = []
+    if _dockerignore_path.exists():
+        _old = _dockerignore_path.read_text(encoding="utf-8").splitlines()
+        if not (_old and _old[0].startswith("# Auto-generated by orm_skyway.py")):
+            _inside = False
+            for _l in _old:
+                if _l.startswith("# >>> orm_skyway managed block"):
+                    _inside = True
+                    continue
+                if _l.startswith("# <<< end of orm_skyway managed block"):
+                    _inside = False
+                    continue
+                if not _inside:
+                    _di_user_lines.append(_l)
+            while _di_user_lines and not _di_user_lines[0].strip():
+                _di_user_lines.pop(0)
+    _di_content = "\n".join(_di_lines) + "\n"
+    if _di_user_lines:
+        _di_content += "\n" + "\n".join(_di_user_lines).rstrip("\n") + "\n"
+    _dockerignore_path.write_text(_di_content, encoding="utf-8")
+    verbose_info(f"Written: .dockerignore  (excludes the credential-bearing ORM files{_di_db_note})")
 
     # ── run_docker_app.cmd / run_docker_app.sh ────────────────────────────────
     _mount_flag_cmd = ""
@@ -2840,13 +2893,17 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         _creds_flags_sh  = f' --env-file {_env_file_rel} -e JDX_DB_USER -e JDX_DB_PASSWORD'
         # Phase 3 always writes the env file (as an empty template), so the
         # check is for a non-empty value in it, not just for the file.
+        # findstr needs a backslash path: with gilhari/orm_skyway.env it reads
+        # /orm_skyway.env as an option, cannot open the file and the warning
+        # always fires (found on Windows, 1.0.36 testing). docker accepts both.
+        _env_file_rel_win = _env_file_rel.replace('/', '\\')
         _creds_warn_cmd = (
-            f'findstr /R /C:"^JDX_DB_USER=." "{_env_file_rel}" >nul 2>&1 || if "%JDX_DB_USER%"=="" echo WARNING: JDX_DB_USER is set neither in {_env_file_rel} nor in the environment -- the container will fail to authenticate to the database.\r\n'
-            f'findstr /R /C:"^JDX_DB_PASSWORD=." "{_env_file_rel}" >nul 2>&1 || if "%JDX_DB_PASSWORD%"=="" echo WARNING: JDX_DB_PASSWORD is set neither in {_env_file_rel} nor in the environment -- the container will fail to authenticate to the database.\r\n'
+            f'findstr /R /C:"^JDX_DB_USER=." "{_env_file_rel_win}" >nul 2>&1 || if "%JDX_DB_USER%"=="" echo WARNING: JDX_DB_USER is set neither in {_env_file_rel} nor in the environment -- the service will not be able to log in to the database and will stop at start-up.\r\n'
+            f'findstr /R /C:"^JDX_DB_PASSWORD=." "{_env_file_rel_win}" >nul 2>&1 || if "%JDX_DB_PASSWORD%"=="" echo WARNING: JDX_DB_PASSWORD is set neither in {_env_file_rel} nor in the environment -- the service will not be able to log in to the database and will stop at start-up.\r\n'
         )
         _creds_warn_sh = (
-            f'if [ -z "$JDX_DB_USER" ] && ! grep -Eq "^JDX_DB_USER=.+" "{_env_file_rel}" 2>/dev/null; then echo "⚠ JDX_DB_USER is set neither in {_env_file_rel} nor in the environment -- the container will fail to authenticate to the database."; fi\n'
-            f'if [ -z "$JDX_DB_PASSWORD" ] && ! grep -Eq "^JDX_DB_PASSWORD=.+" "{_env_file_rel}" 2>/dev/null; then echo "⚠ JDX_DB_PASSWORD is set neither in {_env_file_rel} nor in the environment -- the container will fail to authenticate to the database."; fi\n'
+            f'if [ -z "$JDX_DB_USER" ] && ! grep -Eq "^JDX_DB_USER=.+" "{_env_file_rel}" 2>/dev/null; then echo "⚠ JDX_DB_USER is set neither in {_env_file_rel} nor in the environment -- the service will not be able to log in to the database and will stop at start-up."; fi\n'
+            f'if [ -z "$JDX_DB_PASSWORD" ] && ! grep -Eq "^JDX_DB_PASSWORD=.+" "{_env_file_rel}" 2>/dev/null; then echo "⚠ JDX_DB_PASSWORD is set neither in {_env_file_rel} nor in the environment -- the service will not be able to log in to the database and will stop at start-up."; fi\n'
         )
 
     # ── run_docker_app.cmd / run_docker_app.sh ────────────────────────────────
@@ -2866,6 +2923,10 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         f"docker rm -f {image_name} >nul 2>&1\r\n"
         f"{_network_create_cmd}"
         f"docker run --platform {cfg['docker_platform']}{_identity_flags_cmd}{_network_flag}{_creds_flags_cmd} -d --name {image_name}{_mount_flag_cmd} -p {host_port}:{service_port} {image_name}:{image_tag}\r\n"
+        f"if errorlevel 1 (\r\n"
+        f"    echo docker run failed -- see the message above.\r\n"
+        f"    exit /b 1\r\n"
+        f")\r\n"
         f"\r\n"
         f"echo Waiting for Gilhari microservice to start...\r\n"
         f"echo (This may take up to 3 minutes for cloud or remote databases)\r\n"
@@ -2874,18 +2935,28 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         f"    curl.exe -fs http://localhost:{host_port}/gilhari/v1/health/check >nul 2>&1\r\n"
         f"    if not errorlevel 1 set READY=1\r\n"
         f"    if !READY!==1 goto :done\r\n"
+        f"    REM Stop waiting if the container has exited (e.g. it could not connect to the database)\r\n"
+        f"    set RUNNING=\r\n"
+        f"    for /f \"delims=\" %%s in ('docker inspect -f \"{{{{.State.Running}}}}\" {image_name} 2^>nul') do set RUNNING=%%s\r\n"
+        f"    if not \"!RUNNING!\"==\"true\" goto :stopped\r\n"
         f"    timeout /t 10 /nobreak >nul\r\n"
         f")\r\n"
         f":done\r\n"
         f"if !READY!==1 (\r\n"
         f"    echo Gilhari microservice is up and ready.\r\n"
         f"    echo REST base URL: http://localhost:{host_port}/gilhari/v1/\r\n"
-        f") else (\r\n"
-        f"    echo Service did not respond after 180 seconds.\r\n"
-        f"    echo The container may still be starting. Check: docker logs {image_name}\r\n"
-        f"    echo To check if it started later: curl.exe -s http://localhost:{host_port}/gilhari/v1/health/check\r\n"
-        f"    exit /b 1\r\n"
-        f")\r\n",
+        f"    exit /b 0\r\n"
+        f")\r\n"
+        f"echo Service did not respond after 180 seconds.\r\n"
+        f"echo The container may still be starting. Check: docker logs {image_name}\r\n"
+        f"echo To check if it started later: curl.exe -s http://localhost:{host_port}/gilhari/v1/health/check\r\n"
+        f"exit /b 1\r\n"
+        f":stopped\r\n"
+        f"set EXITCODE=?\r\n"
+        f"for /f \"delims=\" %%c in ('docker inspect -f \"{{{{.State.ExitCode}}}}\" {image_name} 2^>nul') do set EXITCODE=%%c\r\n"
+        f"echo The container {image_name} stopped during start-up (exit code !EXITCODE!). Last lines of its log:\r\n"
+        f"docker logs --tail 20 {image_name} 2>&1\r\n"
+        f"exit /b 1\r\n",
         encoding="utf-8"
     )
     # --add-host flag: needed on macOS/Linux when host.docker.internal
@@ -2912,7 +2983,8 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         f"# Remove any existing container with this name (stopped or running)\n"
         f"docker rm -f {image_name} > /dev/null 2>&1 || true\n"
         f"{_network_create_sh}"
-        f"docker run --platform {cfg['docker_platform']}{_identity_flags_sh}{_network_flag}{_add_host_flag}{_creds_flags_sh} -d --name {image_name}{_mount_flag_sh} -p {host_port}:{service_port} {image_name}:{image_tag}\n"
+        f"docker run --platform {cfg['docker_platform']}{_identity_flags_sh}{_network_flag}{_add_host_flag}{_creds_flags_sh} -d --name {image_name}{_mount_flag_sh} -p {host_port}:{service_port} {image_name}:{image_tag} \\\n"
+        f"    || {{ echo \"✘ docker run failed -- see the message above.\"; exit 1; }}\n"
         f"\n"
         f"echo \"Waiting for Gilhari microservice to start...\"\n"
         f"echo \"(This may take up to 3 minutes for cloud or remote databases)\"\n"
@@ -2921,6 +2993,12 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         f"        echo \"✔ Gilhari microservice is up and ready.\"\n"
         f"        echo \"  REST base URL: http://localhost:{host_port}/gilhari/v1/\"\n"
         f"        exit 0\n"
+        f"    fi\n"
+        f"    # Stop waiting if the container has exited (e.g. it could not connect to the database)\n"
+        f"    if [ \"$(docker inspect -f '{{{{.State.Running}}}}' {image_name} 2>/dev/null)\" != \"true\" ]; then\n"
+        f"        echo \"✘ The container {image_name} stopped during start-up (exit code $(docker inspect -f '{{{{.State.ExitCode}}}}' {image_name} 2>/dev/null)). Last lines of its log:\"\n"
+        f"        docker logs --tail 20 {image_name} 2>&1 | sed 's/^/    /'\n"
+        f"        exit 1\n"
         f"    fi\n"
         f"    sleep 10\n"
         f"done\n"
