@@ -1,6 +1,6 @@
 # Docker Mode — Run with Zero Local Prerequisites
 
-_Last updated: 2026-10-04 3:30 PM PDT_
+_Last updated: 2026-10-05 2:43 PM PDT_
 
 ← [README](../README.md)
 
@@ -18,18 +18,15 @@ Normally, running `orm_skyway.py` requires:
 - The Gilhari SDK (JDX libraries)
 - The right JDBC driver JAR for your database
 
-Docker mode replaces the first three with one: **Docker**. The `softwaretree/orm_skyway` image bundles Python and the JDX SDK, plus JDBC drivers for three common databases (MySQL, PostgreSQL, SQLite) — though those bundled versions may not always be the latest, and for any other database you'll still set `jdbc_driver_jar` in your config as usual (see [below](#whats-handled-automatically)). Either way, you point the tool at your database and your config file exactly as before — the difference is entirely in how the tool itself runs, not in what it produces.
+Docker mode replaces the first three with one: **Docker**. The `softwaretree/orm_skyway` image bundles Python, a JDK and the JDX SDK, plus JDBC drivers for three common databases (MySQL, PostgreSQL, SQLite) — though those bundled versions may not always be the latest, and for any other database you'll still set `jdbc_driver_jar` in your config as usual (see [below](#whats-handled-automatically)). Either way, you point the tool at your database and your config file exactly as before — the difference is entirely in how the tool itself runs, not in what it produces.
 
 ---
 
 ## One-time setup
 
-`softwaretree/orm_skyway` is published on Docker Hub — most people don't need to build anything:
+`softwaretree/orm_skyway` is published on Docker Hub — most people don't need to build anything. The same command works on Windows, macOS and Linux:
 
-```bat
-docker pull softwaretree/orm_skyway
 ```
-```bash
 docker pull softwaretree/orm_skyway
 ```
 
@@ -40,11 +37,11 @@ Even this manual pull is optional — `docker/run_orm_skyway.cmd`/`.sh` (see [Da
 **Prefer to build it yourself instead?** That only makes sense if you're modifying `orm_skyway.py`, the `Dockerfile`, or `docker-entrypoint.sh` and want to test your changes, or if your network can't reach Docker Hub but you already have this repo. It does **not** get you a native ARM64 image on Apple Silicon — a locally-built image is still amd64-only, same as the published one, since the `softwaretree/gilhari` base image it builds on is itself amd64-only.
 
 ```bat
-:: from anywhere — build.cmd finds the repo root itself
+:: Windows (from anywhere — build.cmd finds the repo root itself)
 docker\build.cmd
 ```
 ```bash
-# from anywhere — build.sh finds the repo root itself
+# macOS / Linux (from anywhere — build.sh finds the repo root itself)
 ./docker/build.sh
 ```
 
@@ -81,7 +78,7 @@ Same config file, same flags, same interactive prompts as the standard workflow 
 
 | You don't need to... | Because... |
 |---|---|
-| Set `jx_home` | The image's bundled JDX SDK is used automatically |
+| Set `jx_home` in the config file (or the `JX_HOME` environment variable) | The image's bundled JDX SDK is used automatically |
 | Find a JDBC driver JAR for MySQL/PostgreSQL/SQLite | The image already has them |
 | Worry about `localhost` in `jdbc_url` | Automatically resolved to reach your host machine's database |
 | Edit anything for a SQLite file under your project directory | The whole project directory is already mounted |
