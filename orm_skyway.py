@@ -68,8 +68,8 @@ import sys
 import textwrap
 from pathlib import Path
 
-__version__ = "1.0.36"
-# Regenerated: 2026-10-03 3:12 AM PDT
+__version__ = "1.0.37"
+# Regenerated: 2026-10-04 9:57 PM PDT
 # This timestamp updates on every regeneration of this file, independent of
 # __version__ above -- __version__ is bumped manually, only once a change has
 # been verified, so multiple regenerations can share the same version number
@@ -795,11 +795,27 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
         else:
             _bundled = _find_bundled_driver_jar(cfg.get("db_type"))
             if _bundled:
-                verbose_info(
-                    "Detected running inside a Docker container — configured "
-                    f"jdbc_driver_jar ({_configured!r}) isn't reachable here; "
-                    f"using the bundled driver instead: {_bundled}"
-                )
+                # 1.0.37: a warning, not an info line. The bundled driver can be
+                # a different version from the configured one, and it is the one
+                # that ends up in the Gilhari image (Splunk round 25 §13: a
+                # project configured with postgresql-42.7.13.jar shipped
+                # postgresql-42.2.29.jar under a check mark). No configured jar
+                # at all is the expected case and stays an info line.
+                if _configured:
+                    _where = ("a host path, which is not visible inside the container"
+                              if (Path(_configured).is_absolute()
+                                  or (len(_configured) > 1 and _configured[1] == ":"))
+                              else "not found under the project directory")
+                    warn(
+                        f"jdbc_driver_jar {_configured!r} is {_where}; using the driver "
+                        f"bundled with the image instead: {Path(_bundled).name}. That "
+                        f"driver is also the one packaged into the Gilhari image, and its "
+                        f"version may differ from {Path(_configured).name}. To use your "
+                        f"own driver, copy it into the project (e.g. ./config/) and set "
+                        f"jdbc_driver_jar to that relative path."
+                    )
+                else:
+                    info(f"No jdbc_driver_jar configured; using the driver bundled with the image: {_bundled}")
                 cfg["jdbc_driver_jar"] = _bundled
             elif _configured:
                 warn(
@@ -1021,8 +1037,8 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
     # (including bound literal values — avoid <=3 where that log could be
     # exposed and the data is sensitive) — the main reason to use this
     # flag. That threshold also surfaces a couple of otherwise-silent
-    # warnings (e.g. space-in-column-name exclusion at <=3, binary-column
-    # exclusion at <=1), permanently invisible at the default of 5.
+    # warnings (e.g. binary-column exclusion at <=1; before JDX 5.28 also
+    # space-in-column-name exclusion at <=3), invisible at the default of 5.
     #
     # Also passed to JDXSchema itself as a literal -DEBUGn command-line flag
     # (Phase 1's -reverseEng and -metaForceCreate calls) — per the JDX user
@@ -1805,7 +1821,7 @@ def write_helper_scripts(cfg: dict, config_path: Path, selected_tables: list):
         @echo off
         cd /d "%~dp0.."
         call {SCRIPTS_DIR}\\setEnvironment
-        java -DJX_HOME=%JX_HOME% com.softwaretree.jdxtools.JDXSchema -reverseEng -DEBUG{cfg['jdx_debug_level']} {rel_config}
+        java "-DJX_HOME=%JX_HOME%" com.softwaretree.jdxtools.JDXSchema -reverseEng -DEBUG{cfg['jdx_debug_level']} {rel_config}
     """), encoding="utf-8")
 
     # Derive the package subdirectory path for clean step in scripts
@@ -1839,8 +1855,17 @@ def write_helper_scripts(cfg: dict, config_path: Path, selected_tables: list):
         rem Clean the package bin directory to remove stale .class files
         if exist {BIN_DIR}\\{pkg_path_back} rmdir /s /q {BIN_DIR}\\{pkg_path_back}
         mkdir {BIN_DIR}\\{pkg_path_back}
-        dir /s /b {SRC_DIR}\\*.java > sources.txt
-        {javac_flags} -d {BIN_DIR} -cp .;{BIN_DIR};%JX_HOME%\\libs\\jxclasses.jar;%JX_HOME%\\external_libs\\json-20240303.jar;{driver_jar} @sources.txt
+        rem List the .java files under {SRC_DIR}\\ as paths relative to the project root,
+        rem with forward slashes. Absolute paths (dir /s /b) break javac when they contain spaces.
+        setlocal enabledelayedexpansion
+        set "ROOT=%CD%\\"
+        (for /r {SRC_DIR} %%f in (*.java) do (
+            set "p=%%f"
+            set "p=!p:%ROOT%=!"
+            echo !p:\\=/!
+        )) > sources.txt
+        endlocal
+        {javac_flags} -d {BIN_DIR} -cp ".;{BIN_DIR};%JX_HOME%\\libs\\jxclasses.jar;%JX_HOME%\\external_libs\\json-20240303.jar;{driver_jar}" @sources.txt
         if %ERRORLEVEL% == 0 (
             echo Compilation completed successfully.
         ) else (
@@ -1853,7 +1878,7 @@ def write_helper_scripts(cfg: dict, config_path: Path, selected_tables: list):
     (root / SCRIPTS_DIR / "JDXDemo.bat").write_text(textwrap.dedent(f"""        @echo off
         cd /d "%~dp0.."
         call {SCRIPTS_DIR}\\setEnvironment
-        java -DJX_HOME=%JX_HOME% com.softwaretree.jdxtools.JDXDemo config\\JDXDemo.config
+        java "-DJX_HOME=%JX_HOME%" com.softwaretree.jdxtools.JDXDemo config\\JDXDemo.config
     """), encoding="utf-8")
 
     # JDXDemo.sh
@@ -2076,21 +2101,29 @@ def compile_classes(cfg: dict):
     bin_pkg = bin_dir if pkg_rel == Path(".") else bin_dir / pkg_rel
     bin_pkg.mkdir(parents=True, exist_ok=True)
 
-    # Write sources.txt with absolute paths so @sources.txt works anywhere
+    # Write sources.txt with paths relative to the project root, using forward
+    # slashes, and run javac from the project root (cwd=root below). javac
+    # splits each line of an @file at whitespace and treats backslashes inside
+    # quotes as escapes, so absolute Windows paths broke compilation whenever
+    # the project directory contained a space. Same format as compile.bat/.sh.
     sources_txt = root / "sources.txt"
     sources_txt.write_text(
-        "\n".join(str(f.resolve()) for f in java_files),
+        "\n".join(f.resolve().relative_to(root).as_posix() for f in sorted(java_files)) + "\n",
         encoding="utf-8"
     )
     verbose_info(f"Found {len(java_files)} Java source file(s).")
 
     bin_dir.mkdir(parents=True, exist_ok=True)
 
+    # Absolute classpath entries: javac runs with cwd=root (see below), which
+    # differs from this process's cwd when --project-dir is used, so relative
+    # jx_home / jdbc_driver_jar values are resolved against this process's cwd
+    # first, as they were before javac was run from the project root.
     cp = _build_cp(cfg,
         str(bin_dir),
-        str(Path(jx_home) / "libs" / "jxclasses.jar"),
-        str(Path(jx_home) / "external_libs" / "json-20240303.jar"),
-        driver_jar,
+        str(Path(jx_home).resolve() / "libs" / "jxclasses.jar"),
+        str(Path(jx_home).resolve() / "external_libs" / "json-20240303.jar"),
+        str(Path(driver_jar).resolve()),
     )
 
     # Detect javac version — --release was introduced in Java 9.
@@ -2114,7 +2147,7 @@ def compile_classes(cfg: dict):
     ]
     verbose_info(f"Command: {' '.join(cmd)}")
 
-    ret = subprocess.run(cmd, capture_output=False, text=True)
+    ret = subprocess.run(cmd, cwd=str(root), capture_output=False, text=True)
     if ret.returncode != 0:
         error("Compilation failed (see output above).")
         sys.exit(1)
@@ -2763,23 +2796,35 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
     # Keep whatever the user added outside the managed block. A file from
     # before 1.0.36 (file-DB mode only) was entirely generated -- it starts
     # with "# Auto-generated by orm_skyway.py" -- and is replaced as a whole.
+    # 1.0.37: lines above the managed block stay above it and lines below
+    # stay below (1.0.36 moved them all below; Splunk round 25 §13). A
+    # file without a block keeps its lines after the new block, as before.
+    _di_above_lines = []
     _di_user_lines = []
     if _dockerignore_path.exists():
         _old = _dockerignore_path.read_text(encoding="utf-8").splitlines()
         if not (_old and _old[0].startswith("# Auto-generated by orm_skyway.py")):
-            _inside = False
+            _has_block = any(_l.startswith("# >>> orm_skyway managed block") for _l in _old)
+            _state = "above" if _has_block else "below"
             for _l in _old:
                 if _l.startswith("# >>> orm_skyway managed block"):
-                    _inside = True
+                    _state = "inside"
                     continue
                 if _l.startswith("# <<< end of orm_skyway managed block"):
-                    _inside = False
+                    _state = "below"
                     continue
-                if not _inside:
+                if _state == "above":
+                    _di_above_lines.append(_l)
+                elif _state == "below":
                     _di_user_lines.append(_l)
+            while _di_above_lines and not _di_above_lines[-1].strip():
+                _di_above_lines.pop()
             while _di_user_lines and not _di_user_lines[0].strip():
                 _di_user_lines.pop(0)
-    _di_content = "\n".join(_di_lines) + "\n"
+    _di_content = ""
+    if _di_above_lines:
+        _di_content += "\n".join(_di_above_lines) + "\n\n"
+    _di_content += "\n".join(_di_lines) + "\n"
     if _di_user_lines:
         _di_content += "\n" + "\n".join(_di_user_lines).rstrip("\n") + "\n"
     _dockerignore_path.write_text(_di_content, encoding="utf-8")
@@ -3752,10 +3797,28 @@ Then start the server: `ormcp-server`
 See the [ORMCP documentation](https://github.com/SoftwareTree/ormcp-docs) for
 client-specific configuration (Gemini CLI, OpenAI GPTs, HTTP mode).
 
-> **HTTP mode:** ORMCP can also run as an HTTP server, making it accessible
-> from other machines, mobile devices, and any HTTP-capable client — not just
-> local AI desktop apps. Start with `ormcp-server --transport http` and point clients
-> at `http://<host>:<port>/`. See the ORMCP documentation for details.
+### HTTP mode
+
+ORMCP can also run as an HTTP server, so that other machines and any
+HTTP-capable MCP client can reach it:
+
+```bash
+ormcp-server --transport http --host 0.0.0.0 --port 8080
+```
+
+- The MCP endpoint is **`http://<host>:8080/mcp`**. Use it exactly as shown:
+  `/mcp/` (with a trailing slash) answers with a redirect, which some clients
+  do not follow, and `/` is not an MCP endpoint.
+- `--host` defaults to `127.0.0.1` (this machine only); `0.0.0.0` accepts
+  connections from other machines. `--port` defaults to `8080`.
+- Host/Origin protection is on by default. If clients reach the server under
+  another host name (a tunnel, a reverse proxy, `host.docker.internal`), list
+  it in `ALLOWED_HOSTS` (comma-separated), e.g. `ALLOWED_HOSTS=myname.example.com`.
+- **Claude Desktop** connects to an HTTP MCP server only as a **custom
+  connector** (Settings → Connectors), which needs a public **HTTPS** URL such
+  as `https://<tunnel host>/mcp`; add the tunnel host to `ALLOWED_HOSTS`.
+  `claude_desktop_config.json` starts local (stdio) servers only, as in the
+  configuration above.
 
 ---
 
@@ -3778,9 +3841,16 @@ Once connected, try asking your AI agent:
 | `GILHARI_NAME` | `{image_name}` | Container name for auto-start |
 | `GILHARI_IMAGE` | `{image_name}:{image_tag}` | Docker image for auto-start |
 | `GILHARI_PORT` | `{host_port}` | Port for auto-start |
-| `READONLY_MODE` | `True` (matches ormcp-server's own default as of 0.6.8; set explicitly below for clarity) | Set `False` to allow write operations (create, update, delete) |
+| `READONLY_MODE` | `True` | Query tools only. `True` is also ormcp-server's default (since 0.6.8); the configuration above sets it explicitly. Set `False` to add the write tools (insert, update, update2, delete, delete2) |
 | `GILHARI_TIMEOUT` | `30` (default) | API timeout in seconds |
 | `LOG_LEVEL` | `INFO` (default) | `DEBUG`, `INFO`, `WARNING`, or `ERROR` |
+| `ORMCP_LOG_FILE` | (default) | Log file, written in addition to the console. Default: `ormcp_server_debug.log` in the system temp directory (`%TEMP%` on Windows). Set a path to log elsewhere, or `none` to log to the console only (ormcp-server 0.7.0 and later) |
+| `ALLOWED_HOSTS` | (not set) | HTTP mode only: extra host names accepted by the Host/Origin protection, comma-separated |
+
+`GILHARI_BASE_URL` is where ORMCP finds the service. If `GILHARI_PORT` is set,
+it overrides the port in that URL (ORMCP warns when the two differ), so keep
+them the same. If the service is not running when ORMCP starts, ORMCP starts
+the `{image_name}` container itself from `GILHARI_IMAGE`, named `GILHARI_NAME`.
 
 ---
 
