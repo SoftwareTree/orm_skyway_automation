@@ -1,6 +1,6 @@
 # Command-Line Reference
 
-_Last updated: 2026-08-19 1:44 AM PDT_
+_Last updated: 2026-10-04 3:30 PM PDT_
 
 ← [README](../README.md)
 
@@ -58,6 +58,10 @@ CLI flags always override values in the config file. Any value not supplied via 
 | `--docker-platform PLATFORM` | Docker target platform, e.g. `linux/amd64` or `linux/arm64`. Default: `linux/amd64` — `softwaretree/gilhari` is currently single-architecture (amd64-only), so this rarely needs to change. On Apple Silicon Macs, the container runs via emulation with a small performance overhead (see the [Apple Silicon note](gilhari_microservice_packaging.md#apple-silicon-platform-note)). Override only if you have a genuinely multi-arch build to target. |
 | `--docker-hostname HOSTNAME` | Fixed hostname to assign the container via `docker run --hostname`. Default: the Docker image name. **Required for Excel/CData** — see [configuration.md](configuration.md) for details. Needed for any JDBC driver with node-locked licensing that validates the running container's hostname. |
 | `--docker-mac-address MAC` | Fixed MAC address to assign the container via `docker run --mac-address` (e.g. `02:42:ac:11:00:02`). No default — only passed to `docker run` if set. **Required for Excel/CData**, alongside `--docker-hostname` — see [configuration.md](configuration.md) for details, including how to find your machine's real hostname/MAC address (both must match your actual host machine, not arbitrary values, for CData's license check to succeed). |
+| `--docker-network NAME` | Docker network for the service container. Default: none (Docker's default bridge), unless a MAC address is pinned: then a per-service network, `<docker_image_name>-net`, is used, because two containers with the same MAC address on one network lose connections. Set a name to share a network deliberately, or `bridge` to keep the default bridge. `run_docker_app` creates the network if missing. See [configuration.md](configuration.md#node-locked-jdbc-drivers-cdata-hostname-mac-address-and-docker-network). |
+| `--gilhari-base-image IMAGE` | Base image for the generated `gilhari/Dockerfile`. Default: `softwaretree/gilhari`. Use a tagged image to pin the Gilhari/JDX version. |
+
+> `credentials_via_env` (keep database credentials out of the Docker image) has no command-line flag; set it in the config file — see [configuration.md](configuration.md#keeping-credentials-out-of-the-docker-image-credentials_via_env).
 
 ---
 

@@ -1,6 +1,6 @@
 # Configuration File Reference
 
-_Last updated: 2026-08-19 1:44 AM PDT_
+_Last updated: 2026-10-04 3:30 PM PDT_
 
 ← [README](../README.md)
 
@@ -62,7 +62,8 @@ The `tables` field controls which database tables are included in the object mod
 | `db_type` | Overrides the DB type inferred from `jdbc_url`. Leave blank for auto-detection (recommended). Valid values: `MYSQL`, `POSTGRES`, `ORACLE`, `MSSQL`, `SQLITE`, `SNOWFLAKE`, `COCKROACHDB`, `DB2`, `SAPHANA`, `MARIADB` *(experimental)*, `DATABRICKS` *(experimental)*, `SPANNER` *(experimental)*, `YUGABYTE` *(experimental)*, `GENERIC` (any other JDBC-compliant data source — see [GENERIC mode](#generic-mode--connecting-to-any-jdbc-data-source) below). Useful when the JDBC URL format is non-standard and auto-detection fails. |
 | `db_user` | Database username |
 | `db_password` | Database password |
-| `jdbc_driver_jar` | Full path to the JDBC driver JAR. Used both to connect in Phase 1 and copied into `config/` for Docker packaging in Phase 3. |
+| `jdbc_driver_jar` | Full path to the JDBC driver JAR. Used both to connect in Phase 1 and copied into `config/` for Docker packaging in Phase 3. In [Docker mode](docker_mode.md), use a path inside the project directory (e.g. `config/mydriver.jar`), because host paths are not visible inside the container. If the configured jar cannot be used there, ORM_Skyway prints a warning that names both jars and uses the driver bundled with the image instead; that driver is then also the one packaged into the Gilhari image (1.0.37). |
+| `jdbc_driver_lic` | Path to a licence file that the JDBC driver needs (e.g. CData drivers). Leave blank: a `.lic` file with the same stem next to the jar (`cdata.jdbc.splunk.jar` → `cdata.jdbc.splunk.lic`) is found automatically. Set it only if your licence file is named differently. The licence file is copied into `config/` with the jar. |
 | `jdbc_driver_class` | JDBC driver class name. A default is suggested based on the detected DB type, but can be overridden — set this explicitly if your JDBC driver JAR uses a different class name. Common values: `com.mysql.cj.jdbc.Driver`, `org.postgresql.Driver`, `org.sqlite.JDBC`, `com.microsoft.sqlserver.jdbc.SQLServerDriver`, `com.ibm.db2.jcc.DB2Driver`, `net.snowflake.client.api.driver.SnowflakeDriver` |
 
 The DB type (MySQL, PostgreSQL, SQLite, etc.) is inferred automatically from the JDBC URL. You only need to supply it manually via `--db-type` if it cannot be detected.
@@ -386,6 +387,12 @@ The generated `config/<n>.config` file also includes a `JDX_METADATA_FILE` direc
 | `docker_image_name` | Name for the Docker image. Also used as `gilhari_microservice_name` in `gilhari_service.config`. **Required** — must be set to a project-specific name (e.g. `my-sakila-service`) to avoid Docker image conflicts between projects on the same machine. The script will prompt if left blank. |
 | `docker_image_tag` | Docker image tag. Default: `1.0` |
 | `gilhari_host_port` | Host port mapped to Gilhari's internal port. Default: `80`. The service will be reachable at `http://localhost:<port>/gilhari/v1/`. |
+| `docker_platform` | Docker target platform. Default: `linux/amd64` (`softwaretree/gilhari` is currently amd64 only, so this rarely needs to change). |
+| `gilhari_base_image` | Base image for the generated `gilhari/Dockerfile`. Default: `softwaretree/gilhari`. Set a tagged image (e.g. `softwaretree/gilhari:0.8.10`) to pin the Gilhari/JDX version the service is built on. |
+| `credentials_via_env` | `true` keeps the database user name and password out of the Docker image; they are supplied when the container starts. Default: `false`. Config file only (no command-line flag). See [Keeping credentials out of the Docker image](#keeping-credentials-out-of-the-docker-image-credentials_via_env) below. |
+| `docker_hostname` | Fixed host name for the container (`docker run --hostname`). Default: the Docker image name. Needed for node-locked driver licences — see [Node-locked JDBC drivers](#node-locked-jdbc-drivers-cdata-hostname-mac-address-and-docker-network) below. |
+| `docker_mac_address` | Fixed MAC address for the container (`docker run --mac-address`), e.g. `02:42:ac:11:00:02`. No default (Docker assigns a random MAC on every run). Needed for node-locked driver licences; when set, the container also gets its own Docker network (see `docker_network`). |
+| `docker_network` | Docker network for the service container. Default: none (Docker's default bridge), unless `docker_mac_address` is set: then each service gets its own network, `<docker_image_name>-net`. Set a name to share a network deliberately (e.g. with your database or ORMCP container), or `bridge` to use Docker's default bridge even with a MAC address. `run_docker_app` creates the network if it does not exist. |
 | `embed_db_file_in_microservice` | Only applies to file-based databases (SQLite, H2 file mode, HSQLDB file mode, Derby embedded, Excel). Set `true` to bake the database directory into the Docker image (self-contained/shippable). Default `false` = mount the host database directory at runtime via Docker volume — recommended for development. See the SQLite section above for full details. |
 
 ### Script behaviour
@@ -395,6 +402,61 @@ The generated `config/<n>.config` file also includes a `JDX_METADATA_FILE` direc
 | `skip_reverse_eng` | Set `true` to skip running JDXReverseEngineer (useful to recompile or re-run Phase 3 without repeating the schema step). Default: `false` |
 | `skip_compile` | Set `true` to skip Java compilation. Default: `false` |
 | `verbose` | Set `true` to enable detailed output: command lines, file writes, class mappings. Equivalent to `--verbose`. Default: `false` |
+| `jdx_debug_level` | JDX's own `DEBUG_LEVEL` (0–5), written into the Phase 1 `.jdx` and the Phase 3 `gilhari_service.config`. Default: `5` (least detail). Lower numbers show more: at `3` or lower, JDX logs every SQL statement it runs, with the bound values, so avoid that where the log could be seen and the data is sensitive. Equivalent to `--jdx-debug-level`. |
+
+### Keeping credentials out of the Docker image (`credentials_via_env`)
+
+By default, Phase 3 writes the database user name and password into `config/<n>.config.docker.jdx`, which is copied into the Docker image. Anyone who can pull the image can read them. With
+
+```json
+"credentials_via_env": true
+```
+
+Phase 3 instead:
+
+- writes placeholders into the `.docker.jdx`: `USER=set_via_JDX_DB_USER_env;PASSWORD=set_via_JDX_DB_PASSWORD_env`. For drivers that also carry credentials inside the JDBC URL (e.g. CData: `jdbc:splunk:...;User=...;Password=...;`), `User=` and `Password=` are removed from the URL in the `.docker.jdx` too. The working `.jdx` keeps the full values, so JDXDemo and other host tools still connect;
+- creates `gilhari/orm_skyway.env` (an empty template, listed in `.gitignore`, and never overwritten by later Phase 3 runs) for you to fill in:
+  ```
+  JDX_DB_USER=alice
+  JDX_DB_PASSWORD=secret
+  ```
+- makes `gilhari/run_docker_app.cmd` / `.sh` pass `--env-file gilhari/orm_skyway.env -e JDX_DB_USER -e JDX_DB_PASSWORD` to `docker run`. Instead of the file, you can set `JDX_DB_USER` / `JDX_DB_PASSWORD` in the shell before running the script; a value set in the shell wins over the file. The script prints a warning if a value is set in neither place;
+- adds a `_comment_credentials` note to `gilhari/gilhari_service.config` explaining why `db_username` / `db_password` must not be added there (that file is copied into the image as well).
+
+Precedence at run time (Gilhari 0.8.9 / JDX 5.29 and later): the `JDX_DB_USER` / `JDX_DB_PASSWORD` environment variables, then `db_username` / `db_password` in `gilhari_service.config`, then `USER` / `PASSWORD` in the `.docker.jdx`. Empty values are ignored.
+
+Independently of this option, the `.dockerignore` file written by Phase 3 keeps the other files that carry credentials (`config/*.config`, `*.config.jdx`, `*.config.revjdx`, `*.config.bak`, `gilhari/orm_skyway.env` and `orm_skyway_config.json`) out of the Docker build context.
+
+`credentials_via_env` has no effect for SQLite, which needs no credentials.
+
+### Node-locked JDBC drivers (CData): hostname, MAC address and Docker network
+
+CData JDBC drivers (Excel, Splunk, ...) have node-locked licences: the licence check uses the machine's host name **and** MAC address. Docker gives each container a random MAC address and, by default, a host name of its own, so both must be pinned to the values in effect **when the licence was activated**:
+
+```json
+"docker_hostname":    "MYLAPTOP",
+"docker_mac_address": "00:1A:2B:3C:4D:5E"
+```
+
+If you activated the licence on your host machine (the usual case), these are the host's own values (Windows: `hostname` and `getmac /v`; macOS/Linux: `hostname` and `ifconfig` / `ip link`). If you activated it inside a container, use that container's pinned values. Any other pair fails with "installed but not activated". Without them, the service starts and even reports healthy in `/health/check`, but every data request fails with a licence error. ORM_Skyway prints a warning when it detects a CData driver (`jdbc:excel:` or `jdbc:splunk:` URL, or a `cdata` driver class) and either value is missing.
+
+**One Docker network per service.** Two containers with the same MAC address on one Docker network lose connections intermittently (health checks included): in testing, about 15 to 20% of requests failed with both on Docker's default bridge, and none with each on its own network. So when `docker_mac_address` is set, each service gets its own network, `<docker_image_name>-net`, which `run_docker_app` creates if it does not exist; Phase 3 prints `Service container network: ...`. Port publishing (`-p`) and `host.docker.internal` work the same on it. Set `docker_network` to override this:
+
+- an explicit name, to share a network deliberately — e.g. with an ORMCP container that reaches the service by its container name. Do not put two services with the same MAC address on it;
+- `bridge` (or `default`), to use Docker's default bridge as before.
+
+**Splunk (CData driver)** — example:
+
+```json
+"jdbc_url":          "jdbc:splunk:URL=https://splunk.example.com:8089;User=admin;Password=secret;",
+"jdbc_driver_jar":   "config/cdata.jdbc.splunk.jar",
+"jdbc_driver_class": "cdata.jdbc.splunk.SplunkDriver",
+"credentials_via_env": true,
+"docker_hostname":   "<hostname at activation>",
+"docker_mac_address": "<MAC at activation>"
+```
+
+For a `jdbc:splunk:` URL, `db_type` defaults to `GENERIC`, and if `db_user` / `db_password` are not set they are taken from `User=` / `Password=` in the URL. Splunk is a read-only data source: see [read-only databases](begin_reverse_engineering.md#read-only-databases). Splunk field names such as `All_Traffic.action` or `tag::eventtype` are handled by JDX's [column naming rule](begin_reverse_engineering.md#column-names-with-special-characters), and Splunk classes have no primary key ([`DB_PRIMARY_KEY_EXISTS FALSE`](orm_refinement.md#tables-and-views-without-a-primary-key)).
 
 ---
 
@@ -427,6 +489,7 @@ Each file includes comments explaining the key settings for that database type.
 
 - **CLI flags always override config file values.** Run `python jdx_reverse_engineer.py --help` or see the [command-line reference](orm_skyway_command_line.md) for all available flags.
 - **Sensitive values** like `db_password` can be left blank and entered interactively at runtime rather than stored in the file.
+- **To keep credentials out of the Docker image**, set `credentials_via_env` (see [above](#keeping-credentials-out-of-the-docker-image-credentials_via_env)).
 - **Do not commit real credentials** to version control. The template in the repo has no real values and is safe to commit.
 
 ---

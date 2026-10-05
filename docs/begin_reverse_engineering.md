@@ -1,6 +1,6 @@
 # Phase 1 — Reverse Engineering
 
-_Last updated: 2026-08-03 5:32 PM PDT_
+_Last updated: 2026-10-04 3:30 PM PDT_
 
 **Goal:** Connect to your existing database, select the tables you care about, and automatically generate a JSON object model and (JDX) ORM mapping specification.
 
@@ -67,6 +67,12 @@ The script handles this automatically after compiling the model classes (compila
 - **If `JDXMetadata` is already present** in the database — the script skips this step entirely, leaving your existing metadata untouched.
 - **If `JDXMetadata` is absent** — the script invokes `JDXSchema -metaForceCreate -IGNORE_WARNINGS`, which creates both the `JDXMetadata` and `JDXSequence` tables in your database. `-metaForceCreate` also drops and recreates `JDXSequence` if a stale copy exists. `-IGNORE_WARNINGS` suppresses harmless warnings when `JDXSequence` does not yet exist.
 
+- **If the database connection is read-only** (the JDBC driver's `Connection.isReadOnly()` returns `true`, e.g. CData's Splunk and Excel drivers) — the script creates neither `JDXTestConnection` nor `JDXMetadata` and prints:
+  ```
+  The database connection is read-only; skipping creation of the JDXTestConnection and JDXMetadata tables (not needed when the mapping is read from the .jdx file).
+  ```
+  See [Read-only databases](#read-only-databases) below.
+
 The `JDX_METADATA_FILE` directive is written into the generated `.config` file automatically (e.g. `jdxMetadata_mysql.jdx` for MySQL, `jdxMetadata_postgres.jdx` for PostgreSQL), and propagates to all derived ORM files (`.revjdx`, `.jdx`, `.docker.jdx`).
 
 ### Step 7 — Reverse engineering
@@ -77,7 +83,60 @@ The script writes the template config and invokes `JDXSchema -reverseEng`, which
 
 If `src/` already contains `.java` files from a previous run, the script wipes the entire `src/` directory (and `bin/`) after prompting for confirmation, ensuring no stale files from a previous run — including files from a different package — can be compiled into the new build. If you have hand-edited any `.java` files, save copies before re-running Phase 1.
 
-> **Debugging a column that didn't show up as expected?** JDX silently excludes certain columns during reverse engineering — for example, a column whose name contains a space, or a binary-typed column (since raw bytes can't be represented in JSON). By default (`jdx_debug_level` unset, meaning `5`), the warnings explaining *why* a column was excluded are not visible. Set `--jdx-debug-level 3` (or lower) for this run to see them — see the [command-line reference](orm_skyway_command_line.md) for what else becomes visible at each level, including full runtime SQL statement logging at `<=3`.
+> **Debugging a column that didn't show up as expected?** JDX excludes certain columns during reverse engineering — for example, a binary-typed column (since raw bytes can't be represented in JSON), or one of two columns whose names map to the same attribute name (see [Column names with special characters](#column-names-with-special-characters)). Since JDX 5.28, a column whose name contains a space is no longer excluded; it gets an attribute name with `_` in place of the space. By default (`jdx_debug_level` unset, meaning `5`), the warnings explaining *why* a column was excluded are not visible. Set `--jdx-debug-level 3` (or lower) for this run to see them — see the [command-line reference](orm_skyway_command_line.md) for what else becomes visible at each level, including full runtime SQL statement logging at `<=3`.
+
+### Column names with special characters
+
+Since JDX 5.28, every column has three names:
+
+- its **real name** in the database, exactly as the JDBC driver reports it;
+- its **attribute name** in the object model: ASCII letters, digits and `_` are kept, every other character becomes `_` (one for one), case is kept, and a `_` is added in front if the name starts with a digit;
+- its **SQL name**: the real name quoted with the driver's identifier quote string (`"..."`, `` `...` `` or `[...]`, from `DatabaseMetaData.getIdentifierQuoteString()`) whenever it differs from the attribute name.
+
+| Column | Attribute |
+|---|---|
+| `All_Traffic.action` | `All_Traffic_action` |
+| `tag::eventtype` | `tag__eventtype` |
+| `user-agent` | `user_agent` |
+| `price$` | `price_` |
+| `display name` | `display_name` |
+| `9lives` | `_9lives` |
+
+For each such column, reverse engineering writes a `SQLMAP` line that ties the attribute to the quoted column name, e.g.
+
+```
+SQLMAP FOR tag__eventtype COLUMN_NAME "tag::eventtype"
+```
+
+so JDX quotes the column in every SQL statement it generates. Keep these lines if you rename the attribute in Phase 2 (change only the attribute name in them).
+
+**Use attribute names in queries.** Filters, `ORDER BY`, projections and aggregates in REST calls (and in ORMCP tool calls) use attribute names, never column names: `filter=All_Traffic_action='allowed'`, not `All_Traffic.action='allowed'`. ORMCP tells AI agents the same.
+
+**Collisions.** If two columns map to the same attribute name, JDX prints a warning such as
+
+```
+WARNING!! In the table X, the columns 'x::y' and 'x__y' both map to the attribute name x__y.
+```
+
+and maps only one of them; the column whose real name already equals the attribute name (`x__y` here) is ignored. Rename one of the attributes in Phase 2 (with a `SQLMAP` line for its column) if you need both.
+
+If a column name needs quoting but the driver reports no identifier quote string, the column is skipped with a warning.
+
+### Read-only databases
+
+Some data sources can only be read — e.g. Splunk and Excel through CData's JDBC drivers (Excel: `ReadOnly=True` is the driver's default). ORM_Skyway and JDX handle such a source as follows:
+
+- **Phase 1** checks `Connection.isReadOnly()` and, if it is `true`, skips creating the `JDXTestConnection` and `JDXMetadata` tables (see Step 6). Reverse engineering itself only reads metadata, so it works normally.
+- **At service start-up**, JDX 5.29 and later log
+  ```
+  JDX Info: The database connection is read-only; JDX will not create or change any tables (JDXMetadata, JDXSequence, JDXTestConnection or the mapped tables)
+  ```
+  and read the mapping from the `.jdx` file. If `jdx_force_create_schema` is set, JDX logs `JDX Error: forceCreateSchema is set, but the database connection is read-only; no schema was created.` and creates nothing.
+- **Write requests** (POST, PUT, PATCH, DELETE) fail, as the database rejects them. For AI agents, keep ORMCP's `READONLY_MODE` at its default `True`, so the write tools are not offered at all.
+
+> **Known harmless message:** with JDX 5.29, a `CREATE TABLE JDXTestConnection` exception may still appear in the service log at start-up on a read-only source. It does not affect the service; it is due to be removed in JDX 5.30.
+
+The driver decides what `isReadOnly()` returns. If a source cannot be written but its driver reports `false`, Phase 1 tries to create the helper tables and stops with `Could not create JDXTestConnection table.` followed by the database's error. If the driver has a read-only connection property (such as CData's `ReadOnly=True`), set it in `jdbc_url`.
 
 ### Step 8 — Working ORM spec
 The auto-generated `.revjdx` is copied to `.jdx` — your working ORM spec, which you can edit freely in Phase 2. The `.revjdx` is kept as an immutable record and should never be edited directly.

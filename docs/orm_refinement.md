@@ -1,6 +1,6 @@
 # Phase 2 — ORM Refinement and Curation (Manual, Optional but Recommended)
 
-_Last updated: 2026-07-19 1:10 AM PDT_
+_Last updated: 2026-10-04 3:30 PM PDT_
 
 ## Why Phase 2 matters
 
@@ -38,6 +38,11 @@ Please add/modify a SQLMAP specification in the mapping file for any renamed att
 ```
 SQLMAP for productId COLUMN_NAME pid
 ``` 
+
+If the column name contains characters other than letters, digits and `_`, reverse engineering has already written a `SQLMAP` line with the quoted column name (see [Column names with special characters](begin_reverse_engineering.md#column-names-with-special-characters)). When you rename such an attribute, change only the attribute name in that line and keep the quoted column name as it is:
+```
+SQLMAP FOR eventType COLUMN_NAME "tag::eventtype"
+```
 
 **Hide sensitive columns** — remove attributes like `salary`, `ssn`, or `password_hash` entirely. The AI agent will never see columns that are not mapped in the `.jdx`. This is your governance boundary.
 
@@ -79,6 +84,29 @@ Once set (automatically or manually), JDX omits that column from `INSERT` and `U
 
 This is one example of how Phase 2 refinement goes beyond cosmetic changes — it lets a user with knowledge of the underlying schema's semantics shape how the AI agent reasons about and interacts with the data.
 
+### Tables and views without a primary key
+
+JDX needs a primary key to identify objects. For a table or view without one (common for views, log or event data, and sources such as Splunk), reverse engineering uses all of its attributes (except binary ones) as a working key and, since JDX 5.28, marks the class with
+
+```
+CLASS .Events TABLE events
+    ...
+    PRIMARY_KEY host source sourcetype _time
+    DB_PRIMARY_KEY_EXISTS FALSE
+    ...
+;
+```
+
+`DB_PRIMARY_KEY_EXISTS FALSE` means that the `PRIMARY_KEY` values are not guaranteed to be unique in the database. For such a class:
+
+- every row is returned as its own object, even if several rows are identical (without the line, identical rows would be merged into one object);
+- `getObjectById`, and update or delete of individual objects, are not supported, since an object cannot be identified by its key values; bulk update and delete with a filter (`PATCH` / `DELETE` with `filter=`, ORMCP's `update2` / `delete2`) work and affect every matching row;
+- projections need not include the key attributes;
+- generated DDL has no `PRIMARY KEY` constraint;
+- `getObjectModelSummary` shows the line, so ORMCP tells AI agents to use queries, aggregates and filtered operations for the class.
+
+The default is `DB_PRIMARY_KEY_EXISTS TRUE`. If you know that a key-less table does have a unique column (or combination), you can set `PRIMARY_KEY` to it in Phase 2 and remove the `DB_PRIMARY_KEY_EXISTS FALSE` line. For other classes, Gilhari's `allowDuplicates=true` query parameter (Gilhari 0.8.7 and later) returns identical rows separately for a single query.
+
 ---
 
 ## If you change the Java source files
@@ -114,6 +142,8 @@ scripts\JDXDemo.bat       :: Windows
 | `*.revjdx` | `localhost` | Auto-generated, immutable record — never edit |
 | `*.jdx` | `localhost` | Your working copy — edit freely; used by JDXDemo and local Java apps |
 | `*.docker.jdx` | `host.docker.internal` | Auto-generated at the start of Phase 3; packaged inside the Docker image |
+
+With `credentials_via_env` on, the `.docker.jdx` has placeholders instead of the database user name and password (see [configuration.md](configuration.md#keeping-credentials-out-of-the-docker-image-credentials_via_env)).
 
 The `.docker.jdx` does not exist yet at this stage. It is created fresh at the start of Phase 3 by substituting `host.docker.internal` for `localhost` in the JDBC URL so the container can reach the host's database.
 

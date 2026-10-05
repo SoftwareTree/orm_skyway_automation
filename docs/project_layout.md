@@ -1,6 +1,6 @@
 # Project Layout
 
-_Last updated: 2026-07-16_
+_Last updated: 2026-10-04 3:30 PM PDT_
 
 ← [README](../README.md)
 
@@ -19,7 +19,7 @@ The tool repo (`orm_skyway_automation/`) and your service project directories ar
 │   sources.txt                         ← Java source list for javac
 │   .gitignore                          ← excludes credentials, binaries, logs
 │   .gitattributes                      ← enforces correct line endings in Git
-│   .dockerignore                       ← excludes DB file from Docker build context (Phase 3, file-based DBs only)
+│   .dockerignore                       ← keeps credential files (and, in mount mode, the DB file) out of the Docker build context (Phase 3)
 │
 ├── scripts/                            ← Phase 1 helper scripts
 │       setEnvironment.bat / .sh            ← sets JX_HOME and CLASSPATH
@@ -31,7 +31,8 @@ The tool repo (`orm_skyway_automation/`) and your service project directories ar
 │       gilhari_service.config              ← Gilhari runtime config
 │       Dockerfile                          ← Docker image definition
 │       build.cmd / build.sh                ← docker build
-│       run_docker_app.cmd / .sh            ← docker run
+│       run_docker_app.cmd / .sh            ← docker run, then waits for /health/check
+│       orm_skyway.env                      ← DB user name / password for docker run --env-file (credentials_via_env only; git-ignored)
 │       sampleCurlCommands.cmd / .sh              ← read-only sample REST calls
 │       sampleCurlWriteCommands.cmd / .sh         ← write-op sample REST calls (commented out)
 │       connectORMCP.md                     ← ORMCP connection guide
@@ -75,7 +76,7 @@ A few things worth knowing about how this works:
 - **Every generated script self-locates to the project root before doing anything else** (`cd "$(dirname "$0")/.."` in `.sh`, `cd /d "%~dp0.."` in `.bat`/`.cmd`), so they behave the same regardless of where they're invoked from — you don't need to `cd` into `scripts/` or `gilhari/` first.
 - **`scripts/` and `gilhari/` are never wiped (`rmtree`'d) on rerun**, unlike `src/` and `bin/`. Both directories hold a fixed, known set of filenames that are fully overwritten by name every run — there's no orphan-file risk the way there is for schema-dependent generated code, so a full-directory clean isn't needed. It's also safer: you can drop your own notes or variant scripts into either directory without a rerun deleting them.
 - **The Docker build context is still the project root**, even though `Dockerfile` now lives in `gilhari/`. `build.cmd`/`build.sh` invoke `docker build -f gilhari/Dockerfile .` — the `-f` flag points at the Dockerfile's new location, while `.` (the context) stays root so `ADD bin ./bin` and `ADD config ./config` keep working unchanged.
-- **`.dockerignore` deliberately stays at project root, not in `gilhari/`.** Docker looks for `.dockerignore` relative to the build *context* directory, not next to the Dockerfile — moving it into `gilhari/` would cause it to be silently ignored, and DB files intended for exclusion could leak into the image.
+- **`.dockerignore` deliberately stays at project root, not in `gilhari/`.** Docker looks for `.dockerignore` relative to the build *context* directory, not next to the Dockerfile — moving it into `gilhari/` would cause it to be silently ignored, and the files intended for exclusion (credential-bearing ORM files, `orm_skyway.env`, DB files) could leak into the image. Phase 3 regenerates only its marked block in this file; your own lines above or below the block are kept.
 - **`sources.txt` also stays at project root**, not in `scripts/`. Since `compile.bat`/`.sh` `cd` to root before running, `find src -name "*.java" > sources.txt` (and its `.bat` equivalent) still lands it at root, exactly as before.
 
 ---
@@ -102,6 +103,7 @@ Phase 3 generates two Git configuration files in the project root. Neither is re
 - `config/<jdbc-driver>.jar` — large binary, project-specific
 - `curl.log` — curl output log (lands wherever the sample curl script is invoked *from* — e.g. `gilhari/curl.log` if run as `gilhari\sampleCurlCommands.cmd` from root, or project root if run as `.\sampleCurlCommands.cmd` after `cd gilhari`; the bare `curl.log` pattern matches it at any depth either way)
 - `orm_skyway_config.json` — may contain credentials
+- `gilhari/orm_skyway.env` — real database credentials for the container (written only with `credentials_via_env`)
 
 > Running via [Docker mode](docker_mode.md) adds two more excluded entries: `.orm_skyway_license_accepted` and `jdx_sandbox/` — both local/machine-specific, regenerated automatically when needed.
 

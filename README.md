@@ -6,7 +6,7 @@ Copyright (c) 2025 SoftwareTree, Inc. All Rights Reserved.
 
 # Make Your Database AI-Ready — Automatically
 
-_Last updated: 2026-08-19 1:44 AM PDT_
+_Last updated: 2026-10-04 3:30 PM PDT_
 
 **Your business data is already in databases. The missing piece is making it accessible to AI.**
 
@@ -187,7 +187,7 @@ Then add one entry to your AI client config. For **Claude Desktop** (`claude_des
 }
 ```
 
-Claude Desktop starts the ORMCP server automatically — no separate terminal needed. You can then ask things like *"Show me all orders placed this month"* and it queries your database through your curated domain model.
+Claude Desktop starts the ORMCP server automatically — no separate terminal needed. You can then ask things like *"Show me all orders placed this month"* and it queries your database through your curated domain model. Phase 3 writes this snippet, with your project's values filled in, to `gilhari/connectORMCP.md`. ORMCP is read-only by default (`READONLY_MODE=True`); it can also run as an HTTP server — see [Phase 5](docs/ai_ormcp_gilhari_integration.md#ormcp-http-mode).
 
 > **Beta:** ORMCP is currently in beta — free to use for testing and evaluation, not yet for production. No account or access request is needed to install it; `pip install ormcp-server` works directly. See [softwaretree.com/products/ormcp](https://www.softwaretree.com/v1/products/ormcp/ormcp-introduction.php) for details.
 
@@ -228,6 +228,8 @@ Claude Desktop starts the ORMCP server automatically — no separate terminal ne
 - [Phase 3 — Gilhari packaging in detail](docs/gilhari_microservice_packaging.md)
 - [Phase 4 — Testing with curl and Postman](docs/gilhari_testing.md)
 - [Phase 5 — ORMCP / AI integration](docs/ai_ormcp_gilhari_integration.md)
+- [Keeping credentials out of the Docker image](docs/configuration.md#keeping-credentials-out-of-the-docker-image-credentials_via_env)
+- [Column names with special characters](docs/begin_reverse_engineering.md#column-names-with-special-characters) and [read-only databases](docs/begin_reverse_engineering.md#read-only-databases)
 - [Command-line reference](docs/orm_skyway_command_line.md)
 - [Project layout](docs/project_layout.md)
 - [ORMCP documentation](https://github.com/SoftwareTree/ormcp-docs)

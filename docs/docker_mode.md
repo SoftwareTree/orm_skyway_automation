@@ -1,6 +1,6 @@
 # Docker Mode — Run with Zero Local Prerequisites
 
-_Last updated: 2026-08-23 1:07 PM PDT_
+_Last updated: 2026-10-04 3:30 PM PDT_
 
 ← [README](../README.md)
 
@@ -87,6 +87,8 @@ Same config file, same flags, same interactive prompts as the standard workflow 
 | Edit anything for a SQLite file under your project directory | The whole project directory is already mounted |
 
 Using a different database, or want to use a specific JDBC driver version rather than the one bundled in the image? Set `jdbc_driver_jar` in `orm_skyway_config.json` to its location as usual — see the [Configuration reference](configuration.md#database-connection-phase-1). A path under your project directory (e.g. `./config/your-driver.jar`) works the same way it does for a SQLite database file, since the whole project directory is mounted into the container.
+
+A path outside the project directory (e.g. `C:/drivers/...`) is not visible inside the container. For MySQL, PostgreSQL and SQLite the tool then falls back to the driver bundled in the image and prints a warning naming both jars (1.0.37): that bundled driver is also the one packaged into your Gilhari image, and its version may differ from the one you configured. To use your own driver, copy it into the project (e.g. `./config/`) and set `jdbc_driver_jar` to that relative path.
 
 A database on a remote server, or another Docker container by name, works exactly as it does outside Docker mode — no special handling needed either way.
 
