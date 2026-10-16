@@ -1,6 +1,6 @@
 # Phase 5 — ORMCP / AI Agent Integration
 
-_Last updated: 2026-10-04 3:30 PM PDT_
+_Last updated: 2026-10-11 9:06 PM PDT_
 
 **Goal:** Connect your running Gilhari microservice to an AI agent so it can query and interact with your business data through natural language.
 
@@ -99,7 +99,7 @@ ORMCP works with any MCP-compatible client including Gemini CLI, OpenAI GPTs (in
 | `MCP_SERVER_NAME` | Identifier shown in logs and AI client tool lists | `ORMCPServerDemo` |
 | `GILHARI_NAME` | Container name (used for auto-start) | — |
 | `GILHARI_IMAGE` | Docker image for auto-start | — |
-| `GILHARI_PORT` | Port for auto-start. If set, it also overrides the port in `GILHARI_BASE_URL` (with a warning when they differ), so keep the two the same | — |
+| `GILHARI_PORT` | The port ORMCP checks at start-up to see whether the service is running, and the host port it publishes if it starts the container itself. It does not change where requests go: ORMCP always sends them to `GILHARI_BASE_URL`, and warns at start-up when the two ports differ. Keep them the same | — |
 | `READONLY_MODE` | `True`: query tools only (the example configuration above sets it explicitly). Set `False` to add the write tools (insert, update, update2, delete, delete2). Before ormcp-server 0.6.8 the default was `False`. | `True` |
 | `GILHARI_TIMEOUT` | API timeout in seconds | `30` |
 | `LOG_LEVEL` | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR` | `INFO` |

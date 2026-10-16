@@ -1,6 +1,6 @@
 # Phase 3 — Gilhari Microservice Packaging
 
-_Last updated: 2026-10-04 3:30 PM PDT_
+_Last updated: 2026-10-11 9:06 PM PDT_
 
 **Goal:** Package your object model into a self-contained Docker image that exposes a RESTful JSON API for every mapped class.
 
@@ -142,7 +142,7 @@ If `orm_skyway.py` detects a CData driver (`jdbc:excel:` or `jdbc:splunk:` URL, 
 
 ## Docker network for the service container
 
-When `docker_mac_address` is set, each service runs on its own Docker network, `<docker_image_name>-net`, which `run_docker_app` creates if it does not exist. Phase 3 prints `Service container network: <name>`. The reason: services built for the same node-locked licence share a MAC address, and two containers with the same MAC address on one Docker network lose connections intermittently (about 15–20% of requests in testing, health checks included).
+When `docker_mac_address` is set, each service runs on its own Docker network, `<docker_image_name>-net`, which `run_docker_app` creates if it does not exist. Phase 3 prints `Service container network: <name>`. The reason: services built for the same node-locked licence share a MAC address, and two containers with the same MAC address on one Docker network lose connections intermittently (about 12–20% of requests in testing, health checks included).
 
 Override it with `docker_network` (config file) or `--docker-network`:
 

@@ -1,6 +1,6 @@
 # Phase 4 — Run and Test (Manual, Optional but Recommended)
 
-_Last updated: 2026-08-03 5:32 PM PDT_
+_Last updated: 2026-10-11 9:06 PM PDT_
 
 **Goal:** Start the Gilhari microservice and verify that it is serving your data correctly before connecting an AI agent.
 
@@ -21,7 +21,7 @@ The REST API will be available at `http://localhost:<host_port>/gilhari/v1/`.
 
 ## Sample curl scripts
 
-Phase 3 generates `sampleCurlCommands.cmd` (Windows) and `sampleCurlCommands.sh` (macOS/Linux) in the `gilhari/` subdirectory. Run them after the service is started to quickly test some REST APIs — responses are logged to `gilhari/curl.log`:
+Phase 3 generates `sampleCurlCommands.cmd` (Windows) and `sampleCurlCommands.sh` (macOS/Linux) in the `gilhari/` subdirectory. Run them after the service is started to quickly test some REST APIs — responses are logged to `gilhari/curl.log`, next to the scripts, wherever you run them from (1.0.38):
 
 ```bat
 gilhari\sampleCurlCommands.cmd           :: Windows

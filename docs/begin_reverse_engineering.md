@@ -1,6 +1,6 @@
 # Phase 1 — Reverse Engineering
 
-_Last updated: 2026-10-04 3:30 PM PDT_
+_Last updated: 2026-10-11 9:06 PM PDT_
 
 **Goal:** Connect to your existing database, select the tables you care about, and automatically generate a JSON object model and (JDX) ORM mapping specification.
 
@@ -65,6 +65,7 @@ JDX requires a `JDXMetadata` table to track the object model at runtime. If it i
 The script handles this automatically after compiling the model classes (compilation is required because `JDXSchema` validates the ORM mapping file against the compiled classes on startup):
 
 - **If `JDXMetadata` is already present** in the database — the script skips this step entirely, leaving your existing metadata untouched.
+- **Before that, `JDXTestConnection`.** The script creates this small table first, as a workaround for a PostgreSQL problem in JDX versions before 5.30 (5.30 no longer uses it). If it cannot be created, e.g. because the user may not create tables, the script prints a warning and continues (1.0.38; earlier versions stopped here).
 - **If `JDXMetadata` is absent** — the script invokes `JDXSchema -metaForceCreate -IGNORE_WARNINGS`, which creates both the `JDXMetadata` and `JDXSequence` tables in your database. `-metaForceCreate` also drops and recreates `JDXSequence` if a stale copy exists. `-IGNORE_WARNINGS` suppresses harmless warnings when `JDXSequence` does not yet exist.
 
 - **If the database connection is read-only** (the JDBC driver's `Connection.isReadOnly()` returns `true`, e.g. CData's Splunk and Excel drivers) — the script creates neither `JDXTestConnection` nor `JDXMetadata` and prints:
@@ -112,6 +113,8 @@ so JDX quotes the column in every SQL statement it generates. Keep these lines i
 
 **Use attribute names in queries.** Filters, `ORDER BY`, projections and aggregates in REST calls (and in ORMCP tool calls) use attribute names, never column names: `filter=All_Traffic_action='allowed'`, not `All_Traffic.action='allowed'`. ORMCP tells AI agents the same.
 
+A filter is passed to the database largely as written, so a raw column name that happens to be valid SQL on its own, such as a double-quoted `"DISPLAY NAME"='x'` on Oracle, may work. That is not a supported form: it bypasses the mapping (e.g. a renamed attribute), and `getAggregate` rejects it. Use the attribute name.
+
 **Collisions.** If two columns map to the same attribute name, JDX prints a warning such as
 
 ```
@@ -136,7 +139,14 @@ Some data sources can only be read — e.g. Splunk and Excel through CData's JDB
 
 > **Known harmless message:** with JDX 5.29, a `CREATE TABLE JDXTestConnection` exception may still appear in the service log at start-up on a read-only source. It does not affect the service; it is due to be removed in JDX 5.30.
 
-The driver decides what `isReadOnly()` returns. If a source cannot be written but its driver reports `false`, Phase 1 tries to create the helper tables and stops with `Could not create JDXTestConnection table.` followed by the database's error. If the driver has a read-only connection property (such as CData's `ReadOnly=True`), set it in `jdbc_url`.
+The driver decides what `isReadOnly()` returns. If a source cannot be written but its driver reports `false` (for example an Oracle or PostgreSQL user with `SELECT` privilege only), Phase 1 tries to create the helper tables:
+
+- `JDXTestConnection`: a warning such as `Could not create the JDXTestConnection table (ORA-01031: insufficient privileges); continuing.`, and Phase 1 goes on (1.0.38).
+- `JDXMetadata`: if it already exists in the schema, nothing is created and Phase 1 finishes. If it is missing, `JDXSchema -metaForceCreate` fails and Phase 1 stops with advice: run Phase 1 once as the schema owner (or another user with `CREATE TABLE`), or have `CREATE TABLE` granted.
+
+If the driver has a read-only connection property (such as CData's `ReadOnly=True`), set it in `jdbc_url`.
+
+**A read-only user whose tables belong to another schema.** The generated mapping names tables without a schema, so at run time the user must be able to resolve them, e.g. through private synonyms (Oracle) or the search path (PostgreSQL). With that in place, and `JDXMetadata` already present, the service starts cleanly and every read works; writes fail on the missing privilege. Without it, the service reports healthy but every query fails with "table or view does not exist" (Oracle round 26).
 
 ### Step 8 — Working ORM spec
 The auto-generated `.revjdx` is copied to `.jdx` — your working ORM spec, which you can edit freely in Phase 2. The `.revjdx` is kept as an immutable record and should never be edited directly.

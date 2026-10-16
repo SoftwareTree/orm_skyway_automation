@@ -68,8 +68,8 @@ import sys
 import textwrap
 from pathlib import Path
 
-__version__ = "1.0.37"
-# Regenerated: 2026-10-04 9:57 PM PDT
+__version__ = "1.0.38"
+# Regenerated: 2026-10-11 9:06 PM PDT
 # This timestamp updates on every regeneration of this file, independent of
 # __version__ above -- __version__ is bumped manually, only once a change has
 # been verified, so multiple regenerations can share the same version number
@@ -818,12 +818,21 @@ def collect_inputs(args, phase: str = "1+3") -> dict:
                     info(f"No jdbc_driver_jar configured; using the driver bundled with the image: {_bundled}")
                 cfg["jdbc_driver_jar"] = _bundled
             elif _configured:
-                warn(
-                    f"jdbc_driver_jar ({_configured}) was not found inside the container "
-                    "and no bundled driver matches this database type. "
-                    "Copy the driver JAR into your project directory (e.g. ./config/) "
-                    "and reference it with a relative path."
+                # 1.0.38: stop here instead of continuing to the preflight check,
+                # which would fail on the same jar two steps later with less
+                # advice (Oracle round 26 §13).
+                _where = ("a host path, which is not visible inside the container"
+                          if (Path(_configured).is_absolute()
+                              or (len(_configured) > 1 and _configured[1] == ":"))
+                          else "not found under the project directory")
+                error(
+                    f"jdbc_driver_jar {_configured!r} is {_where}, and the image bundles "
+                    "no driver for this database type."
                 )
+                error("  Copy the driver JAR into your project directory (e.g. ./config/) "
+                      "and set jdbc_driver_jar to that relative path, e.g. "
+                      f"\"./config/{Path(_configured).name}\".")
+                sys.exit(1)
 
     # ── Optional: JDX dev bin path — prepended to classpath for SDK dev testing ─
     # Not prompted interactively — only picked up from config file or --jdx-dev-bin-path.
@@ -1285,6 +1294,22 @@ public class CreateTestConnectionHelper {
 """
 
 
+def _first_sql_error_line(text: str) -> str:
+    """Return the most useful single line of a Java exception dump: the first
+    line naming an SQLException (without the class prefix), or else the first
+    non-blank line that is not a stack frame. Empty string if none."""
+    if not text:
+        return ""
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    for l in lines:
+        if "SQLException" in l or "SQLSyntaxErrorException" in l:
+            return l.split(":", 1)[1].strip() if ":" in l else l
+    for l in lines:
+        if not l.startswith("at ") and not l.startswith("..."):
+            return l
+    return ""
+
+
 def ensure_jdxtestconnection(cfg: dict) -> bool:
     """
     Pre-create JDXTestConnection table before invoking JDXSchema -metaForceCreate.
@@ -1327,9 +1352,20 @@ def ensure_jdxtestconnection(cfg: dict) -> bool:
                cfg.get("url_db_type", "")]
         ret = subprocess.run(cmd, capture_output=True, text=True)
         if ret.returncode != 0:
-            error("Could not create JDXTestConnection table.")
-            error(ret.stderr)
-            sys.exit(1)
+            # 1.0.38: not fatal. JDXTestConnection is only a workaround for a
+            # PostgreSQL transaction problem in older JDX versions (JDX 5.30 no
+            # longer uses the table at all). A user without CREATE TABLE
+            # privilege on a connection that does not report itself read-only
+            # (e.g. an Oracle SELECT-only user, Oracle round 26 §15) used to stop
+            # here after a successful reverse engineering and compilation. The
+            # JDXMetadata step below decides whether Phase 1 can finish.
+            _reason = _first_sql_error_line(ret.stderr)
+            warn("Could not create the JDXTestConnection table"
+                 + (f" ({_reason})" if _reason else "") + "; continuing.")
+            warn("  The table is not needed with JDX 5.30 and later. With an older JDX on "
+                 "PostgreSQL, create it as the schema owner: CREATE TABLE JDXTestConnection (test INT)")
+            verbose_info(ret.stderr)
+            return True
         if ret.stdout and "READ_ONLY" in ret.stdout:
             return False
         verbose_info(ret.stdout.strip() if ret.stdout else "")
@@ -1439,6 +1475,17 @@ def ensure_jdxmetadata_via_jdxschema(cfg: dict, jdx_path: Path, all_tables: list
             ret.stdout or "",
             "JDXSchema -metaForceCreate failed."
         )
+        # 1.0.38: the most common cause on a working connection is a user who
+        # may read the tables but not create new ones (Oracle round 26 §15).
+        _out_l = (ret.stdout or "").lower()
+        if any(k in _out_l for k in ("insufficient privilege", "permission denied",
+                                      "ora-01031", "access denied", "not authorized",
+                                      "create table permission denied")):
+            error("  The database user may not create tables. Either run Phase 1 once as the schema "
+                  "owner (or another user with CREATE TABLE), or ask the DBA to grant CREATE TABLE.")
+            error("  JDXMetadata only has to be created once; afterwards a read-only user can run Phase 1 "
+                  "and the service. If that user does not own the tables, it also needs synonyms (or "
+                  "schema-qualified names) for them.")
         sys.exit(1)
     info("JDXMetadata table created successfully.")
 
@@ -2943,8 +2990,8 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         # always fires (found on Windows, 1.0.36 testing). docker accepts both.
         _env_file_rel_win = _env_file_rel.replace('/', '\\')
         _creds_warn_cmd = (
-            f'findstr /R /C:"^JDX_DB_USER=." "{_env_file_rel_win}" >nul 2>&1 || if "%JDX_DB_USER%"=="" echo WARNING: JDX_DB_USER is set neither in {_env_file_rel} nor in the environment -- the service will not be able to log in to the database and will stop at start-up.\r\n'
-            f'findstr /R /C:"^JDX_DB_PASSWORD=." "{_env_file_rel_win}" >nul 2>&1 || if "%JDX_DB_PASSWORD%"=="" echo WARNING: JDX_DB_PASSWORD is set neither in {_env_file_rel} nor in the environment -- the service will not be able to log in to the database and will stop at start-up.\r\n'
+            f'findstr /R /C:"^JDX_DB_USER=." "{_env_file_rel_win}" >nul 2>&1 || if not defined JDX_DB_USER echo WARNING: JDX_DB_USER is set neither in {_env_file_rel} nor in the environment -- the service will not be able to log in to the database and will stop at start-up.\r\n'
+            f'findstr /R /C:"^JDX_DB_PASSWORD=." "{_env_file_rel_win}" >nul 2>&1 || if not defined JDX_DB_PASSWORD echo WARNING: JDX_DB_PASSWORD is set neither in {_env_file_rel} nor in the environment -- the service will not be able to log in to the database and will stop at start-up.\r\n'
         )
         _creds_warn_sh = (
             f'if [ -z "$JDX_DB_USER" ] && ! grep -Eq "^JDX_DB_USER=.+" "{_env_file_rel}" 2>/dev/null; then echo "⚠ JDX_DB_USER is set neither in {_env_file_rel} nor in the environment -- the service will not be able to log in to the database and will stop at start-up."; fi\n'
@@ -2967,7 +3014,7 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         f"REM Remove any existing container with this name (stopped or running)\r\n"
         f"docker rm -f {image_name} >nul 2>&1\r\n"
         f"{_network_create_cmd}"
-        f"docker run --platform {cfg['docker_platform']}{_identity_flags_cmd}{_network_flag}{_creds_flags_cmd} -d --name {image_name}{_mount_flag_cmd} -p {host_port}:{service_port} {image_name}:{image_tag}\r\n"
+        f"docker run --platform {cfg['docker_platform']}{_identity_flags_cmd}{_network_flag}{_creds_flags_cmd} -d --name {image_name}{_mount_flag_cmd} -p {host_port}:{service_port} {image_name}:{image_tag} >nul\r\n"
         f"if errorlevel 1 (\r\n"
         f"    echo docker run failed -- see the message above.\r\n"
         f"    exit /b 1\r\n"
@@ -3028,7 +3075,7 @@ def write_gilhari_artifacts(cfg: dict, config_path: Path, class_names: list):
         f"# Remove any existing container with this name (stopped or running)\n"
         f"docker rm -f {image_name} > /dev/null 2>&1 || true\n"
         f"{_network_create_sh}"
-        f"docker run --platform {cfg['docker_platform']}{_identity_flags_sh}{_network_flag}{_add_host_flag}{_creds_flags_sh} -d --name {image_name}{_mount_flag_sh} -p {host_port}:{service_port} {image_name}:{image_tag} \\\n"
+        f"docker run --platform {cfg['docker_platform']}{_identity_flags_sh}{_network_flag}{_add_host_flag}{_creds_flags_sh} -d --name {image_name}{_mount_flag_sh} -p {host_port}:{service_port} {image_name}:{image_tag} > /dev/null \\\n"
         f"    || {{ echo \"✘ docker run failed -- see the message above.\"; exit 1; }}\n"
         f"\n"
         f"echo \"Waiting for Gilhari microservice to start...\"\n"
@@ -3495,7 +3542,10 @@ def run_phase1(cfg: dict, args) -> tuple:
         _host_driver = cfg.get("host_jdbc_driver_jar") or ""
         if not _host_driver or not Path(_host_driver).is_file():
             _fallback = f"{CONFIG_DIR}/{Path(cfg['jdbc_driver_jar']).name}"
-            verbose_info(f"host_jdbc_driver_jar not found on host — using {_fallback} for setEnvironment scripts.")
+            # 1.0.38: worded as a plain statement of which jar the host-side scripts
+            # use (the jar copied into config/ in Step 8 above), not as a check-marked
+            # "not found" (Splunk round 26 §5.1).
+            verbose_info(f"Host-side scripts (setEnvironment, JDXDemo) will use the driver copied into the project: {_fallback}")
             cfg["host_jdbc_driver_jar"] = _fallback
 
     # 1c - write helper scripts
@@ -3594,8 +3644,11 @@ def validate_inputs(cfg: dict, phase: str):
     if cfg.get("jdbc_driver_jar"):
         driver_path = Path(cfg["jdbc_driver_jar"])
         if not driver_path.exists():
-            errors.append(f"JDBC driver JAR not found: {driver_path}\n"
-                           "  Check the jdbc_driver_jar setting in your config file.")
+            _hint = ("  Check the jdbc_driver_jar setting in your config file.")
+            if _running_in_docker():
+                _hint += ("\n  In Docker mode, copy the JAR into your project directory "
+                          "(e.g. ./config/) and set jdbc_driver_jar to that relative path.")
+            errors.append(f"JDBC driver JAR not found: {driver_path}\n" + _hint)
 
     # ── docker on PATH (Phase 3 only) ─────────────────────────────────────────
     if phase in ("3", "1+3"):
@@ -3840,17 +3893,20 @@ Once connected, try asking your AI agent:
 | `MCP_SERVER_NAME` | `{server_name}` | Name shown in AI client tool lists |
 | `GILHARI_NAME` | `{image_name}` | Container name for auto-start |
 | `GILHARI_IMAGE` | `{image_name}:{image_tag}` | Docker image for auto-start |
-| `GILHARI_PORT` | `{host_port}` | Port for auto-start |
+| `GILHARI_PORT` | `{host_port}` | Port ORMCP checks at start-up, and publishes if it starts the container; keep it equal to the port in `GILHARI_BASE_URL` |
 | `READONLY_MODE` | `True` | Query tools only. `True` is also ormcp-server's default (since 0.6.8); the configuration above sets it explicitly. Set `False` to add the write tools (insert, update, update2, delete, delete2) |
 | `GILHARI_TIMEOUT` | `30` (default) | API timeout in seconds |
 | `LOG_LEVEL` | `INFO` (default) | `DEBUG`, `INFO`, `WARNING`, or `ERROR` |
 | `ORMCP_LOG_FILE` | (default) | Log file, written in addition to the console. Default: `ormcp_server_debug.log` in the system temp directory (`%TEMP%` on Windows). Set a path to log elsewhere, or `none` to log to the console only (ormcp-server 0.7.0 and later) |
 | `ALLOWED_HOSTS` | (not set) | HTTP mode only: extra host names accepted by the Host/Origin protection, comma-separated |
 
-`GILHARI_BASE_URL` is where ORMCP finds the service. If `GILHARI_PORT` is set,
-it overrides the port in that URL (ORMCP warns when the two differ), so keep
-them the same. If the service is not running when ORMCP starts, ORMCP starts
-the `{image_name}` container itself from `GILHARI_IMAGE`, named `GILHARI_NAME`.
+ORMCP sends all its requests to `GILHARI_BASE_URL`. `GILHARI_PORT` is only the
+port ORMCP checks at start-up to see whether the service is running (and the
+host port it publishes if it starts the container itself); it does not change
+where requests go. ORMCP warns when it differs from the port in
+`GILHARI_BASE_URL`, so keep the two the same. If the service is not running when
+ORMCP starts, ORMCP starts the `{image_name}` container itself from
+`GILHARI_IMAGE`, named `GILHARI_NAME`.
 
 ---
 
@@ -4108,6 +4164,7 @@ def write_curl_scripts(cfg: dict, class_names: list):
 
     def _cmd():
         lines = [
+            "@echo off",
             "REM Sample curl commands for the Gilhari microservice.",
             "REM Generated by orm_skyway.py",
             "REM",
@@ -4116,7 +4173,7 @@ def write_curl_scripts(cfg: dict, class_names: list):
             "REM Remove maxObjects to retrieve all qualifying objects,",
             "REM or change it to a different value (-1 to get all qualifying objects).",
             "REM",
-            "REM Responses are recorded in curl.log.",
+            "REM Responses are recorded in curl.log, next to this script (gilhari\\curl.log).",
             "REM",
             "REM You may optionally specify a port as the first argument:",
             "REM   sampleCurlCommands 8899",
@@ -4127,41 +4184,42 @@ def write_curl_scripts(cfg: dict, class_names: list):
             f"SET port={port}",
             "GOTO Proceed",
             ":Proceed",
+            "SET LOG=%~dp0curl.log",
             "",
             "REM Truncate curl.log at the start so it does not grow across runs",
-            "echo. > curl.log",
+            'echo. > "%LOG%"',
             "",
-            "echo ** BEGIN OUTPUT ** >> curl.log",
-            "echo. >> curl.log",
+            'echo ** BEGIN OUTPUT ** >> "%LOG%"',
+            'echo. >> "%LOG%"',
             "",
             "REM -- Health check --",
-            "echo ** Health check >> curl.log",
-            'curl.exe -s "http://localhost:%port%/gilhari/v1/health/check" | python -m json.tool >> curl.log',
-            "echo. >> curl.log",
+            'echo ** Health check >> "%LOG%"',
+            'curl.exe -s "http://localhost:%port%/gilhari/v1/health/check" | python -m json.tool >> "%LOG%"',
+            'echo. >> "%LOG%"',
             "",
             "REM -- Object model summary (plain text response, not JSON) --",
-            "echo ** Object model summary >> curl.log",
-            'curl.exe -s "http://localhost:%port%/gilhari/v1/getObjectModelSummary/now" >> curl.log',
-            "echo. >> curl.log",
+            'echo ** Object model summary >> "%LOG%"',
+            'curl.exe -s "http://localhost:%port%/gilhari/v1/getObjectModelSummary/now" >> "%LOG%"',
+            'echo. >> "%LOG%"',
             "",
         ]
         for cls in sample:
             lines += [
                 f"REM -- GET {cls} objects - deep (includes related objects, up to {max_obj}) --",
-                f"echo ** GET {cls} objects (deep) >> curl.log",
-                f'curl.exe -s -X GET "http://localhost:%port%/gilhari/v1/{cls}?deep=true&maxObjects={max_obj}" -H "Content-Type: application/json" | python -m json.tool >> curl.log',
-                "echo. >> curl.log",
+                f'echo ** GET {cls} objects (deep) >> "%LOG%"',
+                f'curl.exe -s -X GET "http://localhost:%port%/gilhari/v1/{cls}?deep=true&maxObjects={max_obj}" -H "Content-Type: application/json" | python -m json.tool >> "%LOG%"',
+                'echo. >> "%LOG%"',
                 "",
                 f"REM -- GET {cls} objects - shallow (excludes related objects, up to {max_obj}) --",
-                f"echo ** GET {cls} objects (shallow) >> curl.log",
-                f'curl.exe -s -X GET "http://localhost:%port%/gilhari/v1/{cls}?deep=false&maxObjects={max_obj}" -H "Content-Type: application/json" | python -m json.tool >> curl.log',
-                "echo. >> curl.log",
+                f'echo ** GET {cls} objects (shallow) >> "%LOG%"',
+                f'curl.exe -s -X GET "http://localhost:%port%/gilhari/v1/{cls}?deep=false&maxObjects={max_obj}" -H "Content-Type: application/json" | python -m json.tool >> "%LOG%"',
+                'echo. >> "%LOG%"',
                 "",
             ]
         lines += [
-            "echo ** END OUTPUT ** >> curl.log",
-            "echo. >> curl.log",
-            "type curl.log",
+            'echo ** END OUTPUT ** >> "%LOG%"',
+            'echo. >> "%LOG%"',
+            'type "%LOG%"',
         ]
         return "\r\n".join(lines) + "\r\n"
 
@@ -4176,46 +4234,47 @@ def write_curl_scripts(cfg: dict, class_names: list):
             "# Remove maxObjects to retrieve all qualifying objects,",
             "# or change it to a different value (-1 to get all qualifying objects).",
             "#",
-            "# Responses are recorded in curl.log.",
+            "# Responses are recorded in curl.log, next to this script (gilhari/curl.log).",
             "#",
             "# You may optionally specify a port as the first argument:",
             "#   ./sampleCurlCommands.sh 8899",
             f'port="${{1:-{port}}}"',
+            'LOG="$(dirname "$0")/curl.log"',
             "",
             "# Truncate curl.log at the start so it does not grow across runs",
-            "> curl.log",
+            '> "$LOG"',
             "",
-            'echo "** BEGIN OUTPUT **" >> curl.log',
-            'echo "" >> curl.log',
+            'echo "** BEGIN OUTPUT **" >> "$LOG"',
+            'echo "" >> "$LOG"',
             "",
             "# -- Health check --",
-            'echo "** Health check" >> curl.log',
-            'curl -s "http://localhost:$port/gilhari/v1/health/check" | python3 -m json.tool >> curl.log',
-            'echo "" >> curl.log',
+            'echo "** Health check" >> "$LOG"',
+            'curl -s "http://localhost:$port/gilhari/v1/health/check" | python3 -m json.tool >> "$LOG"',
+            'echo "" >> "$LOG"',
             "",
             "# -- Object model summary (plain text response, not JSON) --",
-            'echo "** Object model summary" >> curl.log',
-            'curl -s "http://localhost:$port/gilhari/v1/getObjectModelSummary/now" >> curl.log',
-            'echo "" >> curl.log',
+            'echo "** Object model summary" >> "$LOG"',
+            'curl -s "http://localhost:$port/gilhari/v1/getObjectModelSummary/now" >> "$LOG"',
+            'echo "" >> "$LOG"',
             "",
         ]
         for cls in sample:
             lines += [
                 f"# -- GET {cls} objects - deep (includes related objects, up to {max_obj}) --",
-                f'echo "** GET {cls} objects (deep)" >> curl.log',
-                f'curl -s -X GET "http://localhost:$port/gilhari/v1/{cls}?deep=true&maxObjects={max_obj}" -H "Content-Type: application/json" | python3 -m json.tool >> curl.log',
-                'echo "" >> curl.log',
+                f'echo "** GET {cls} objects (deep)" >> "$LOG"',
+                f'curl -s -X GET "http://localhost:$port/gilhari/v1/{cls}?deep=true&maxObjects={max_obj}" -H "Content-Type: application/json" | python3 -m json.tool >> "$LOG"',
+                'echo "" >> "$LOG"',
                 "",
                 f"# -- GET {cls} objects - shallow (excludes related objects, up to {max_obj}) --",
-                f'echo "** GET {cls} objects (shallow)" >> curl.log',
-                f'curl -s -X GET "http://localhost:$port/gilhari/v1/{cls}?deep=false&maxObjects={max_obj}" -H "Content-Type: application/json" | python3 -m json.tool >> curl.log',
-                'echo "" >> curl.log',
+                f'echo "** GET {cls} objects (shallow)" >> "$LOG"',
+                f'curl -s -X GET "http://localhost:$port/gilhari/v1/{cls}?deep=false&maxObjects={max_obj}" -H "Content-Type: application/json" | python3 -m json.tool >> "$LOG"',
+                'echo "" >> "$LOG"',
                 "",
             ]
         lines += [
-            'echo "** END OUTPUT **" >> curl.log',
-            'echo "" >> curl.log',
-            "cat curl.log",
+            'echo "** END OUTPUT **" >> "$LOG"',
+            'echo "" >> "$LOG"',
+            'cat "$LOG"',
         ]
         return "\n".join(lines) + "\n"
 

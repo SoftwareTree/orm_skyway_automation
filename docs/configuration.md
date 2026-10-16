@@ -1,6 +1,6 @@
 # Configuration File Reference
 
-_Last updated: 2026-10-04 3:30 PM PDT_
+_Last updated: 2026-10-11 9:06 PM PDT_
 
 ← [README](../README.md)
 
@@ -118,6 +118,8 @@ If `db_schema` is left blank, the script extracts the database name from the JDB
 ```
 
 If your MySQL URL includes connection parameters (e.g. `?useSSL=FALSE`), include them in `jdbc_url` — `db_schema` still just holds the database name if set explicitly.
+
+> **"Public Key Retrieval is not allowed":** with MySQL 8's default `caching_sha2_password` authentication and `useSSL=FALSE`, Connector/J reports a login it cannot complete this way, e.g. after a server restart or for a user name it has not seen, rather than as "access denied". Add `allowPublicKeyRetrieval=true` to the URL (`...?useSSL=FALSE&allowPublicKeyRetrieval=true`), or connect with SSL. Check the user name and password too: a wrong user can produce the same message.
 
 If `db_schema` is set explicitly, it must match the database name in `jdbc_url` — in MySQL these are the same concept and a mismatch will cause the script to exit with an error.
 
@@ -440,7 +442,7 @@ CData JDBC drivers (Excel, Splunk, ...) have node-locked licences: the licence c
 
 If you activated the licence on your host machine (the usual case), these are the host's own values (Windows: `hostname` and `getmac /v`; macOS/Linux: `hostname` and `ifconfig` / `ip link`). If you activated it inside a container, use that container's pinned values. Any other pair fails with "installed but not activated". Without them, the service starts and even reports healthy in `/health/check`, but every data request fails with a licence error. ORM_Skyway prints a warning when it detects a CData driver (`jdbc:excel:` or `jdbc:splunk:` URL, or a `cdata` driver class) and either value is missing.
 
-**One Docker network per service.** Two containers with the same MAC address on one Docker network lose connections intermittently (health checks included): in testing, about 15 to 20% of requests failed with both on Docker's default bridge, and none with each on its own network. So when `docker_mac_address` is set, each service gets its own network, `<docker_image_name>-net`, which `run_docker_app` creates if it does not exist; Phase 3 prints `Service container network: ...`. Port publishing (`-p`) and `host.docker.internal` work the same on it. Set `docker_network` to override this:
+**One Docker network per service.** Two containers with the same MAC address on one Docker network lose connections intermittently (health checks included): in testing, about 12 to 20% of requests failed with both on Docker's default bridge, and none with each on its own network. So when `docker_mac_address` is set, each service gets its own network, `<docker_image_name>-net`, which `run_docker_app` creates if it does not exist; Phase 3 prints `Service container network: ...`. Port publishing (`-p`) and `host.docker.internal` work the same on it. Set `docker_network` to override this:
 
 - an explicit name, to share a network deliberately — e.g. with an ORMCP container that reaches the service by its container name. Do not put two services with the same MAC address on it;
 - `bridge` (or `default`), to use Docker's default bridge as before.
